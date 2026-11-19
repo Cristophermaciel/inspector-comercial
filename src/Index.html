@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title><?= appName ?></title>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <?!= include('Styles'); ?>
+</head>
+<body>
+
+  <!-- BARRA SUPERIOR -->
+  <header class="topbar">
+    <button id="btnBack" class="icon-btn hidden" onclick="App.goBack()" title="Volver">
+      <span class="material-icons">arrow_back</span>
+    </button>
+    <div class="topbar-title">
+      <h1 id="headerTitle"><?= appName ?></h1>
+      <small id="headerSubtitle"><?= subtitle ?></small>
+    </div>
+    <button class="icon-btn" onclick="App.refreshCurrent()" title="Sincronizar">
+      <span class="material-icons">sync</span>
+    </button>
+  </header>
+
+  <!-- CONTENEDOR PRINCIPAL -->
+  <div class="app-shell">
+    <!-- BARRA LATERAL DESKTOP -->
+    <aside class="sidebar">
+      <button class="sidebar-item active" data-tab="menu" onclick="App.openTab('menu')">
+        <span class="material-icons">apps</span> Menú Principal
+      </button>
+      <button class="sidebar-item" data-tab="forms" onclick="App.openTab('forms')">
+        <span class="material-icons">edit_note</span> Formularios
+      </button>
+      <button class="sidebar-item" data-tab="tables" onclick="App.openTab('tables')">
+        <span class="material-icons">table_rows</span> Listados y Registros
+      </button>
+      <button class="sidebar-item" data-tab="map" onclick="App.openTab('map')">
+        <span class="material-icons">map</span> Mapa Fiscalizaciones
+      </button>
+      <button class="sidebar-item" data-tab="dashboard" onclick="App.openTab('dashboard')">
+        <span class="material-icons">bar_chart</span> Dashboard
+      </button>
+      <div class="sidebar-divider"></div>
+      <button class="sidebar-item" data-tab="backup" onclick="App.openTab('backup')">
+        <span class="material-icons">cloud_download</span> Respaldo Excel y Drive
+      </button>
+      <div class="sidebar-divider"></div>
+      <div class="sidebar-footer">
+        <div id="userEmailLabel">Conectando...</div>
+        <div>CREADOR CRISTOPHER MACIEL</div>
+        <div>CONTACTO 1410</div>
+      </div>
+    </aside>
+
+    <!-- ÁREA DE CONTENIDO DINÁMICO -->
+    <main class="main-content" id="appView">
+      <div class="card" style="text-align:center;padding:40px;">
+        Cargando Inspector Comercial...
+      </div>
+    </main>
+  </div>
+
+  <!-- BARRA INFERIOR MÓVIL -->
+  <nav class="bottom-nav">
+    <button class="nav-btn active" data-tab="menu" onclick="App.openTab('menu')">
+      <span class="material-icons">apps</span>Menú
+    </button>
+    <button class="nav-btn" data-tab="forms" onclick="App.openTab('forms')">
+      <span class="material-icons">edit_note</span>Formularios
+    </button>
+    <button class="nav-btn" data-tab="tables" onclick="App.openTab('tables')">
+      <span class="material-icons">table_rows</span>Listados
+    </button>
+    <button class="nav-btn" data-tab="dashboard" onclick="App.openTab('dashboard')">
+      <span class="material-icons">bar_chart</span>Dashboard
+    </button>
+    <button class="nav-btn" data-tab="backup" onclick="App.openTab('backup')">
+      <span class="material-icons">cloud_download</span>Respaldo
+    </button>
+  </nav>
+
+  <!-- MODAL DETALLE DE REGISTRO -->
+  <div id="detailModal" class="modal-backdrop" onclick="if(event.target===this)App.closeModal()">
+    <div class="modal-dialog">
+      <div class="section-header" style="margin-bottom:10px;">
+        <h2 id="modalTitle" style="font-size:17px;">Detalle del Registro</h2>
+        <button class="btn btn-outline btn-sm" onclick="App.closeModal()">Cerrar</button>
+      </div>
+      <div id="modalBody"></div>
+    </div>
+  </div>
+
+  <!-- LOADER GLOBAL -->
+  <div id="globalLoader" class="loader-overlay">
+    <div class="spinner"></div>
+    <div id="loaderText" style="font-weight:500;color:#0b7bde;">Procesando...</div>
+  </div>
+
+  <!-- NOTIFICACIÓN TOAST -->
+  <div id="toast" class="toast"></div>
+
+  <?!= include('AppScript'); ?>
+</body>
+</html>

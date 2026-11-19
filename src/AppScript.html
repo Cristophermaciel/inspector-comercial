@@ -1,0 +1,865 @@
+<script>
+/**
+ * ============================================================================
+ * INSPECTOR COMERCIAL - CONTROLADOR FRONTEND SPA
+ * ============================================================================
+ */
+const App = {
+  boot: null,
+  history: [],
+  currentRoute: null,
+  currentTableData: null,
+  mediaUploads: {},
+  signaturePads: {},
+  chartInstances: [],
+  leafletMap: null,
+
+  init() {
+    this.showLoader('Cargando INSPECTOR COMERCIAL...');
+    google.script.run
+      .withSuccessHandler(res => {
+        this.hideLoader();
+        if (!res || !res.authorized) {
+          document.getElementById('appView').innerHTML =
+            '<div class="card"><h2>Acceso restringido</h2><p>Tu cuenta (' +
+            this.esc(res && res.user ? res.user.email : '') +
+            ') no está autorizada para usar Inspector Comercial.</p></div>';
+          return;
+        }
+        this.boot = res;
+        document.getElementById('userEmailLabel').textContent = res.user.email || 'Usuario Municipal';
+        this.openTab('menu');
+      })
+      .withFailureHandler(err => {
+        this.hideLoader();
+        this.toast('Error al iniciar: ' + err.message);
+      })
+      .apiGetBootstrap();
+  },
+
+  // ==========================================================================
+  // NAVEGACIÓN
+  // ==========================================================================
+  openTab(tab) {
+    this.history = [];
+    document.querySelectorAll('[data-tab]').forEach(el => {
+      el.classList.toggle('active', el.getAttribute('data-tab') === tab);
+    });
+
+    if (tab === 'menu') {
+      this.navigate({ kind: 'menu', table: 'MENU', title: 'Menú Principal' }, false);
+    } else if (tab === 'forms') {
+      this.navigate({ kind: 'formsHub', title: 'Formularios de Fiscalización' }, false);
+    } else if (tab === 'tables') {
+      this.navigate({ kind: 'tablesHub', title: 'Listados y Registros' }, false);
+    } else if (tab === 'map') {
+      this.navigate({ kind: 'map', table: 'COMERCIO', title: 'Fiscalizaciones Comerciales (Mapa)' }, false);
+    } else if (tab === 'dashboard') {
+      this.navigate({ kind: 'dashboard', title: 'Dashboard Estadístico' }, false);
+    } else if (tab === 'backup') {
+      this.navigate({ kind: 'backup', title: 'Respaldo Excel y Carpetas Drive' }, false);
+    }
+  },
+
+  navigate(route, pushHistory = true) {
+    if (pushHistory && this.currentRoute) {
+      this.history.push(this.currentRoute);
+    }
+    this.currentRoute = route;
+    document.getElementById('headerTitle').textContent = route.title || this.boot.config.appName;
+    document.getElementById('btnBack').classList.toggle('hidden', this.history.length === 0);
+
+    switch (route.kind) {
+      case 'menu': this.renderMenuTable(route.table); break;
+      case 'formsHub': this.renderFormsHub(); break;
+      case 'tablesHub': this.renderTablesHub(); break;
+      case 'form': this.renderForm(route.table, route.record || null); break;
+      case 'table': this.renderTable(route.table); break;
+      case 'links': this.renderDocumentLinks(); break;
+      case 'map': this.renderMap(route.table || 'COMERCIO'); break;
+      case 'dashboard': this.renderDashboard(); break;
+      case 'backup': this.renderBackupPanel(); break;
+      default: this.renderMenuTable('MENU');
+    }
+  },
+
+  goBack() {
+    if (this.history.length === 0) return;
+    const prev = this.history.pop();
+    this.navigate(prev, false);
+  },
+
+  refreshCurrent() {
+    if (!this.currentRoute) return;
+    this.navigate(this.currentRoute, false);
+    this.toast('Datos sincronizados');
+  },
+
+  openAppSheetViewName(viewName) {
+    const mapped = this.boot.viewMap[viewName];
+    if (mapped) {
+      this.navigate(Object.assign({}, mapped));
+      return;
+    }
+    // Búsqueda flexible por nombre de tabla
+    if (this.boot.schemas[viewName]) {
+      this.navigate({ kind: 'table', table: viewName, title: this.boot.schemas[viewName].label || viewName });
+      return;
+    }
+    this.toast('Vista "' + viewName + '" no mapeada todavía.');
+  },
+
+  // ==========================================================================
+  // VISTAS DE MENÚ (DINÁMICAS DESDE GOOGLE SHEETS + ACCESOS DIRECTOS)
+  // ==========================================================================
+  renderMenuTable(tableName) {
+    const rows = (this.boot.navTables && this.boot.navTables[tableName]) || [];
+    const schema = this.boot.schemas[tableName] || {};
+    const labelKey = schema.keyCol || 'ID MENU';
+
+    let html = '<div class="section-header"><h2>' + this.esc(this.currentRoute.title) + '</h2></div>';
+
+    if (rows.length > 0) {
+      html += '<div class="gallery-grid">';
+      rows.forEach(r => {
+        const title = r[labelKey] || r['VISTA'] || 'Opción';
+        const vista = r['VISTA'] || '';
+        const img = r['IMAGEN'] || '';
+        const imgHtml = img && String(img).startsWith('http')
+          ? '<img class="card-thumb" src="' + this.esc(img) + '" alt="">'
+          : '<div class="card-icon"><span class="material-icons">dashboard_customize</span></div>';
+
+        html += '<div class="menu-card" onclick="App.openAppSheetViewName(\'' + this.escJs(vista) + '\')">' +
+          imgHtml +
+          '<div class="card-title">' + this.esc(title) + '</div>' +
+          '</div>';
+      });
+      html += '</div>';
+    }
+
+    // Siempre mostrar accesos rápidos completos en el Menú Principal
+    if (tableName === 'MENU') {
+      html += '<div class="section-header" style="margin-top:24px;"><h2>Accesos Directos</h2></div>';
+      html += this._buildQuickCardsHtml();
+    }
+
+    document.getElementById('appView').innerHTML = html;
+  },
+
+  _buildQuickCardsHtml() {
+    const quick = [
+      { title: 'Fis. Comercial', icon: 'store', route: { kind: 'form', table: 'COMERCIO', title: 'Fiscalización Comercial' } },
+      { title: 'Fis. Fuera de Horario', icon: 'schedule', route: { kind: 'form', table: 'FUERA DE HORA', title: 'Fiscalización Fuera de Horario' } },
+      { title: 'Fis. Publicidad', icon: 'campaign', route: { kind: 'form', table: 'GIGANTOGRAFIA', title: 'Fiscalización Publicidad' } },
+      { title: 'Patentes en Mora', icon: 'payments', route: { kind: 'form', table: 'PATENTES EN MORA', title: 'Patentes en Mora' } },
+      { title: 'Reporte a Jefatura', icon: 'assignment', route: { kind: 'form', table: 'REPORTE', title: 'Reporte a Jefatura' } },
+      { title: 'Registro Feria Libre', icon: 'storefront', route: { kind: 'form', table: 'ASISTENCIA', title: 'Registro Feria Libre' } },
+      { title: 'Semana Peñaflorina', icon: 'festival', route: { kind: 'form', table: 'SEMANA PEÑAFLORINA', title: 'Semana Peñaflorina' } },
+      { title: 'Notif. por Deudas', icon: 'notifications_active', route: { kind: 'table', table: 'Hoja 1', title: 'Notificaciones por Deudas' } },
+      { title: 'Mapa Fiscalizaciones', icon: 'map', route: { kind: 'map', table: 'COMERCIO', title: 'Mapa de Fiscalizaciones' } },
+      { title: 'Dashboard', icon: 'bar_chart', route: { kind: 'dashboard', title: 'Dashboard Estadístico' } },
+      { title: 'Documentos Drive', icon: 'folder_shared', route: { kind: 'links', table: 'DOCUMENTOS', title: 'Documentos Drive' } },
+      { title: 'Respaldo Excel', icon: 'cloud_download', route: { kind: 'backup', title: 'Respaldo Excel y Drive' } }
+    ];
+
+    let html = '<div class="gallery-grid">';
+    quick.forEach((q, idx) => {
+      html += '<div class="menu-card" onclick=\'App.navigate(' + JSON.stringify(q.route) + ')\'>' +
+        '<div class="card-icon"><span class="material-icons">' + q.icon + '</span></div>' +
+        '<div class="card-title">' + this.esc(q.title) + '</div>' +
+        '</div>';
+    });
+    html += '</div>';
+    return html;
+  },
+
+  renderFormsHub() {
+    const formTables = ['COMERCIO', 'FUERA DE HORA', 'GIGANTOGRAFIA', 'PATENTES EN MORA', 'REPORTE', 'ASISTENCIA', 'SEMANA PEÑAFLORINA', 'Hoja 1', 'FUNCIONARIO'];
+    let html = '<div class="section-header"><h2>Formularios de Ingreso</h2></div><div class="gallery-grid">';
+    formTables.forEach(t => {
+      const s = this.boot.schemas[t];
+      html += '<div class="menu-card" onclick="App.navigate({kind:\'form\',table:\'' + this.escJs(t) + '\',title:\'' + this.escJs(s.label) + '\'})">' +
+        '<div class="card-icon"><span class="material-icons">' + (s.icon || 'edit_note') + '</span></div>' +
+        '<div class="card-title">' + this.esc(s.label) + '</div>' +
+        (s.hasPdfBot ? '<span class="badge badge-blue">Auto PDF</span>' : '') +
+        '</div>';
+    });
+    html += '</div>';
+    document.getElementById('appView').innerHTML = html;
+  },
+
+  renderTablesHub() {
+    const dataTables = ['COMERCIO', 'FUERA DE HORA', 'GIGANTOGRAFIA', 'PATENTES EN MORA', 'REPORTE', 'ASISTENCIA', 'SEMANA PEÑAFLORINA', 'Hoja 1', 'FUNCIONARIO', 'DOCUMENTOS'];
+    let html = '<div class="section-header"><h2>Listados y Registros</h2></div><div class="gallery-grid">';
+    dataTables.forEach(t => {
+      const s = this.boot.schemas[t];
+      html += '<div class="menu-card" onclick="App.navigate({kind:\'table\',table:\'' + this.escJs(t) + '\',title:\'' + this.escJs(s.label) + '\'})">' +
+        '<div class="card-icon"><span class="material-icons">' + (s.icon || 'table_rows') + '</span></div>' +
+        '<div class="card-title">' + this.esc(s.label) + '</div>' +
+        '</div>';
+    });
+    html += '</div>';
+    document.getElementById('appView').innerHTML = html;
+  },
+
+  renderDocumentLinks() {
+    const rows = (this.boot.navTables && this.boot.navTables['DOCUMENTOS']) || [];
+    let html = '<div class="section-header"><h2>Documentos y Enlaces Drive</h2>' +
+      '<button class="btn btn-primary btn-sm" onclick="App.navigate({kind:\'form\',table:\'DOCUMENTOS\',title:\'Nuevo Enlace Drive\'})">+ Agregar enlace</button>' +
+      '</div><div class="gallery-grid">';
+    if (rows.length === 0) {
+      html += '<div class="card" style="grid-column:1/-1;">No hay enlaces registrados en la hoja DOCUMENTOS.</div>';
+    } else {
+      rows.forEach(r => {
+        html += '<a class="menu-card" style="text-decoration:none;" href="' + this.esc(r['LINK'] || '#') + '" target="_blank">' +
+          '<div class="card-icon"><span class="material-icons">open_in_new</span></div>' +
+          '<div class="card-title">' + this.esc(r['IR'] || 'Documento') + '</div>' +
+          '</a>';
+      });
+    }
+    html += '</div>';
+    document.getElementById('appView').innerHTML = html;
+  },
+
+  // ==========================================================================
+  // FORMULARIO DINÁMICO (CON FOTOS, FIRMA CANVAS, GPS Y ENUMLIST)
+  // ==========================================================================
+  renderForm(tableName, existingRecord) {
+    const schema = this.boot.schemas[tableName];
+    const isEdit = Boolean(existingRecord && existingRecord._RowNumber);
+    this.mediaUploads = {};
+    this.signaturePads = {};
+
+    const orderedColNames = schema.formColumns || schema.columns.map(c => c.name);
+    const colMap = {};
+    schema.columns.forEach(c => colMap[c.name] = c);
+
+    let fieldsHtml = '';
+    orderedColNames.forEach(colName => {
+      const col = colMap[colName];
+      if (!col || col.hiddenInForm || col.readOnly) return;
+
+      const label = col.displayName || col.name;
+      const val = existingRecord && existingRecord[col.name] !== undefined ? existingRecord[col.name] : '';
+      const fieldId = 'fld_' + col.name.replace(/[^a-zA-Z0-9]/g, '_');
+
+      let inputHtml = '';
+      let extraClass = '';
+
+      if (col.type === 'Ref' && col.refTable === 'FUNCIONARIO') {
+        inputHtml = '<select class="form-control" data-col="' + this.esc(col.name) + '"><option value="">-- Seleccionar Inspector --</option>';
+        (this.boot.funcionarios || []).forEach(f => {
+          const sel = String(val) === String(f.nombre) ? ' selected' : '';
+          inputHtml += '<option value="' + this.esc(f.nombre) + '"' + sel + '>' + this.esc(f.nombre) + (f.rol ? ' (' + this.esc(f.rol) + ')' : '') + '</option>';
+        });
+        inputHtml += '</select>';
+      } else if (col.type === 'Enum') {
+        inputHtml = '<select class="form-control" data-col="' + this.esc(col.name) + '"><option value="">-- Seleccionar --</option>';
+        (col.values || []).forEach(opt => {
+          const sel = String(val).toUpperCase() === String(opt).toUpperCase() ? ' selected' : '';
+          inputHtml += '<option value="' + this.esc(opt) + '"' + sel + '>' + this.esc(opt) + '</option>';
+        });
+        inputHtml += '</select>';
+      } else if (col.type === 'EnumList') {
+        extraClass = 'full-width';
+        const selectedArr = String(val || '').split(',').map(s => s.trim()).filter(Boolean);
+        inputHtml = '<div class="chip-group" data-enumlist="' + this.esc(col.name) + '">';
+        (col.values || []).forEach(opt => {
+          const isSel = selectedArr.indexOf(opt) !== -1;
+          inputHtml += '<span class="chip' + (isSel ? ' selected' : '') + '" onclick="this.classList.toggle(\'selected\')" data-val="' + this.esc(opt) + '">' + this.esc(opt) + '</span>';
+        });
+        inputHtml += '</div>';
+      } else if (col.type === 'LongText') {
+        extraClass = 'full-width';
+        inputHtml = '<textarea class="form-control" data-col="' + this.esc(col.name) + '">' + this.esc(val) + '</textarea>';
+      } else if (col.type === 'Location') {
+        inputHtml = '<div class="loc-row">' +
+          '<input type="text" class="form-control" id="' + fieldId + '" data-col="' + this.esc(col.name) + '" value="' + this.esc(val) + '" placeholder="-33.6063, -70.8764">' +
+          '<button type="button" class="btn btn-outline btn-sm" onclick="App.captureGPS(\'' + fieldId + '\')" title="Capturar GPS"><span class="material-icons">my_location</span></button>' +
+          '</div>';
+      } else if (col.type === 'Image') {
+        inputHtml = '<div class="photo-box">' +
+          '<input type="file" accept="image/*" capture="environment" onchange="App.handlePhotoSelect(this, \'' + this.escJs(col.name) + '\', \'' + fieldId + '_prev\')">' +
+          '<img id="' + fieldId + '_prev" class="photo-preview" src="' + (val && String(val).startsWith('http') ? this.esc(val) : '') + '" style="' + (val && String(val).startsWith('http') ? 'display:inline-block;' : '') + '">' +
+          '</div>';
+      } else if (col.type === 'Signature') {
+        extraClass = 'full-width';
+        inputHtml = '<canvas id="' + fieldId + '_sig" class="sig-pad" data-sig-col="' + this.esc(col.name) + '"></canvas>' +
+          '<div style="margin-top:6px;display:flex;justify-content:flex-end;">' +
+          '<button type="button" class="btn btn-outline btn-sm" onclick="App.clearSignature(\'' + fieldId + '_sig\')">Limpiar Firma</button>' +
+          '</div>';
+      } else if (col.type === 'Number' || col.type === 'Price') {
+        inputHtml = '<input type="number" step="any" class="form-control" data-col="' + this.esc(col.name) + '" value="' + this.esc(val) + '">';
+      } else if (col.type === 'Date') {
+        inputHtml = '<input type="date" class="form-control" data-col="' + this.esc(col.name) + '" value="' + this.esc(val) + '">';
+      } else if (col.type === 'Email') {
+        inputHtml = '<input type="email" class="form-control" data-col="' + this.esc(col.name) + '" value="' + this.esc(val) + '">';
+      } else if (col.type === 'Phone') {
+        inputHtml = '<input type="tel" class="form-control" data-col="' + this.esc(col.name) + '" value="' + this.esc(val) + '">';
+      } else if (col.type === 'Url') {
+        inputHtml = '<input type="url" class="form-control" data-col="' + this.esc(col.name) + '" value="' + this.esc(val) + '">';
+      } else {
+        inputHtml = '<input type="text" class="form-control" data-col="' + this.esc(col.name) + '" value="' + this.esc(val) + '">';
+      }
+
+      fieldsHtml += '<div class="form-field ' + extraClass + '"><label>' + this.esc(label) + '</label>' + inputHtml + '</div>';
+    });
+
+    const html = '<div class="section-header">' +
+      '<h2>' + (isEdit ? 'Editar: ' : 'Nuevo: ') + this.esc(schema.label) + '</h2>' +
+      '<button class="btn btn-outline btn-sm" onclick="App.navigate({kind:\'table\',table:\'' + this.escJs(tableName) + '\',title:\'' + this.escJs(schema.label) + '\'})">Ver Listado</button>' +
+      '</div>' +
+      '<form id="dynamicForm" class="card" onsubmit="App.submitForm(event, \'' + this.escJs(tableName) + '\', ' + (isEdit ? Number(existingRecord._RowNumber) : 'null') + ', \'' + this.escJs(isEdit ? (existingRecord[schema.keyCol] || '') : '') + '\')">' +
+      '<div class="form-grid">' + fieldsHtml + '</div>' +
+      '<div style="margin-top:20px;display:flex;gap:10px;justify-content:flex-end;">' +
+      '<button type="button" class="btn btn-outline" onclick="App.goBack()">CANCELAR</button>' +
+      '<button type="submit" class="btn btn-primary"><span class="material-icons">save</span> GUARDAR' + (!isEdit && schema.hasPdfBot ? ' Y GENERAR PDF' : '') + '</button>' +
+      '</div></form>';
+
+    document.getElementById('appView').innerHTML = html;
+    this.initSignaturePads();
+  },
+
+  captureGPS(inputId) {
+    if (!navigator.geolocation) {
+      this.toast('Tu navegador no soporta GPS.');
+      return;
+    }
+    this.toast('Obteniendo ubicación GPS...');
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        const coords = pos.coords.latitude.toFixed(6) + ', ' + pos.coords.longitude.toFixed(6);
+        document.getElementById(inputId).value = coords;
+        this.toast('Ubicación capturada: ' + coords);
+      },
+      err => this.toast('Error GPS: ' + err.message),
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  },
+
+  handlePhotoSelect(input, colName, previewId) {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        // Comprimir imagen a máx 1280px para subida rápida a Google Drive
+        const maxDim = 1280;
+        let w = img.width, h = img.height;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) { h = Math.round(h * maxDim / w); w = maxDim; }
+          else { w = Math.round(w * maxDim / h); h = maxDim; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        const compressed = canvas.toDataURL('image/jpeg', 0.78);
+        this.mediaUploads[colName] = compressed;
+        const prev = document.getElementById(previewId);
+        if (prev) {
+          prev.src = compressed;
+          prev.style.display = 'inline-block';
+        }
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  },
+
+  initSignaturePads() {
+    document.querySelectorAll('canvas.sig-pad').forEach(canvas => {
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width || 500;
+      canvas.height = 170;
+      const ctx = canvas.getContext('2d');
+      ctx.lineWidth = 2.4;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = '#111827';
+
+      let drawing = false;
+      let hasInk = false;
+
+      const getPos = e => {
+        const r = canvas.getBoundingClientRect();
+        const t = e.touches ? e.touches[0] : e;
+        return { x: (t.clientX - r.left) * (canvas.width / r.width), y: (t.clientY - r.top) * (canvas.height / r.height) };
+      };
+
+      const start = e => { drawing = true; hasInk = true; const p = getPos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); e.preventDefault(); };
+      const move = e => { if (!drawing) return; const p = getPos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); e.preventDefault(); };
+      const end = () => { drawing = false; };
+
+      canvas.addEventListener('mousedown', start);
+      canvas.addEventListener('mousemove', move);
+      window.addEventListener('mouseup', end);
+      canvas.addEventListener('touchstart', start, { passive: false });
+      canvas.addEventListener('touchmove', move, { passive: false });
+      canvas.addEventListener('touchend', end);
+
+      this.signaturePads[canvas.id] = {
+        col: canvas.getAttribute('data-sig-col'),
+        canvas,
+        hasInk: () => hasInk,
+        clear: () => { ctx.clearRect(0, 0, canvas.width, canvas.height); hasInk = false; }
+      };
+    });
+  },
+
+  clearSignature(canvasId) {
+    if (this.signaturePads[canvasId]) this.signaturePads[canvasId].clear();
+  },
+
+  submitForm(event, tableName, rowNumber, existingKey) {
+    event.preventDefault();
+    const form = document.getElementById('dynamicForm');
+    const schema = this.boot.schemas[tableName];
+    const record = {};
+
+    if (rowNumber) record._RowNumber = rowNumber;
+    if (existingKey && schema.keyCol && schema.keyCol !== '_RowNumber') {
+      record[schema.keyCol] = existingKey;
+    }
+
+    form.querySelectorAll('[data-col]').forEach(el => {
+      record[el.getAttribute('data-col')] = el.value;
+    });
+
+    form.querySelectorAll('[data-enumlist]').forEach(group => {
+      const col = group.getAttribute('data-enumlist');
+      const selected = Array.from(group.querySelectorAll('.chip.selected')).map(c => c.getAttribute('data-val'));
+      record[col] = selected.join(' , ');
+    });
+
+    // Adjuntar firmas dibujadas
+    Object.keys(this.signaturePads).forEach(id => {
+      const pad = this.signaturePads[id];
+      if (pad.hasInk()) {
+        this.mediaUploads[pad.col] = pad.canvas.toDataURL('image/png');
+      }
+    });
+
+    this.showLoader('Guardando registro, subiendo archivos a Drive y generando PDF...');
+    google.script.run
+      .withSuccessHandler(res => {
+        this.hideLoader();
+        if (res && res.ok) {
+          let msg = res.isEdit ? 'Registro actualizado correctamente.' : 'Registro guardado en Google Sheets y Drive.';
+          if (res.pdf && res.pdf.url) {
+            msg += ' PDF generado automáticamente.';
+          }
+          this.toast(msg);
+          this.navigate({ kind: 'table', table: tableName, title: schema.label });
+        }
+      })
+      .withFailureHandler(err => {
+        this.hideLoader();
+        this.toast('Error al guardar: ' + err.message);
+      })
+      .apiSaveRecord(tableName, record, this.mediaUploads);
+  },
+
+  // ==========================================================================
+  // VISTAS DE TABLA / LISTADOS
+  // ==========================================================================
+  renderTable(tableName) {
+    const schema = this.boot.schemas[tableName];
+    this.showLoader('Cargando ' + schema.label + '...');
+    google.script.run
+      .withSuccessHandler(data => {
+        this.hideLoader();
+        this.currentTableData = data;
+        this._paintTable(tableName, data, '');
+      })
+      .withFailureHandler(err => {
+        this.hideLoader();
+        this.toast('Error cargando tabla: ' + err.message);
+      })
+      .apiGetTableRows(tableName);
+  },
+
+  _paintTable(tableName, data, query) {
+    const schema = this.boot.schemas[tableName];
+    const cols = schema.tableColumns || schema.columns.slice(0, 6).map(c => c.name);
+    const q = (query || '').toLowerCase();
+
+    const filtered = (data.rows || []).filter(r => {
+      if (!q) return true;
+      return Object.values(r).some(v => String(v || '').toLowerCase().indexOf(q) !== -1);
+    });
+
+    let summaryBanner = '';
+    if (tableName === 'PATENTES EN MORA' && data.summary) {
+      summaryBanner = '<div class="kpi-grid"><div class="kpi-card">' +
+        '<div class="kpi-label">TOTAL DE PATENTES MOROSAS</div>' +
+        '<div class="kpi-value">$' + Number(data.summary.totalPatentesMorosas || 0).toLocaleString('es-CL') + '</div>' +
+        '</div><div class="kpi-card">' +
+        '<div class="kpi-label">REGISTROS TOTALES</div>' +
+        '<div class="kpi-value">' + filtered.length + '</div>' +
+        '</div></div>';
+    }
+
+    let html = '<div class="section-header">' +
+      '<h2>' + this.esc(schema.label) + ' <span class="badge badge-blue">' + filtered.length + '</span></h2>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+      '<button class="btn btn-outline btn-sm" onclick="App.exportCurrentTableCSV(\'' + this.escJs(tableName) + '\')"><span class="material-icons" style="font-size:16px;">download</span> Exportar CSV/Excel</button>' +
+      '<button class="btn btn-primary btn-sm" onclick="App.navigate({kind:\'form\',table:\'' + this.escJs(tableName) + '\',title:\'' + this.escJs(schema.label) + '\'})"><span class="material-icons" style="font-size:16px;">add</span> NUEVO</button>' +
+      '</div></div>' +
+      summaryBanner +
+      '<div class="toolbar">' +
+      '<input type="search" class="form-control search-input" placeholder="Buscar por local, RUT, inspector, dirección..." value="' + this.esc(query) + '" oninput="App._paintTable(\'' + this.escJs(tableName) + '\', App.currentTableData, this.value)">' +
+      '</div>';
+
+    if (filtered.length === 0) {
+      html += '<div class="card" style="text-align:center;color:var(--muted);">No se encontraron registros.</div>';
+    } else {
+      html += '<div class="table-wrap"><table class="data-table"><thead><tr>';
+      cols.forEach(c => html += '<th>' + this.esc(c) + '</th>');
+      html += '<th>ACCIONES</th></tr></thead><tbody>';
+
+      filtered.slice(0, 200).forEach(r => {
+        html += '<tr>';
+        cols.forEach(c => {
+          const val = r[c] !== undefined ? r[c] : '';
+          if (c === 'PDF' && String(val).startsWith('http')) {
+            html += '<td><a class="badge badge-green" href="' + this.esc(val) + '" target="_blank">Abrir PDF</a></td>';
+          } else if (c === 'ESTADO PATENTE' || c === 'CUENTA CON PATENTE' || c === 'PERMISO AL DIA') {
+            const up = String(val).toUpperCase();
+            const cls = (up === 'SI' || up === 'AL DIA') ? 'badge-green' : (up === 'NO' || up === 'EN MORA' || up === 'VENCIDO') ? 'badge-red' : 'badge-amber';
+            html += '<td><span class="badge ' + cls + '">' + this.esc(val || '-') + '</span></td>';
+          } else {
+            html += '<td>' + this.esc(String(val).substring(0, 60)) + '</td>';
+          }
+        });
+        html += '<td style="white-space:nowrap;">' +
+          '<button class="btn btn-outline btn-sm" onclick="App.openDetailModal(\'' + this.escJs(tableName) + '\',' + r._RowNumber + ')">Ver</button> ' +
+          '<button class="btn btn-outline btn-sm" onclick="App.editRow(\'' + this.escJs(tableName) + '\',' + r._RowNumber + ')">Editar</button>' +
+          '</td></tr>';
+      });
+      html += '</tbody></table></div>';
+    }
+
+    document.getElementById('appView').innerHTML = html;
+  },
+
+  editRow(tableName, rowNumber) {
+    const row = (this.currentTableData.rows || []).find(r => Number(r._RowNumber) === Number(rowNumber));
+    if (!row) return;
+    const schema = this.boot.schemas[tableName];
+    this.navigate({ kind: 'form', table: tableName, title: 'Editar ' + schema.label, record: row });
+  },
+
+  openDetailModal(tableName, rowNumber) {
+    const row = (this.currentTableData.rows || []).find(r => Number(r._RowNumber) === Number(rowNumber));
+    if (!row) return;
+    const schema = this.boot.schemas[tableName];
+
+    document.getElementById('modalTitle').textContent = schema.label + ' — ' + (row[schema.labelCol] || row.ID || '#' + rowNumber);
+    let body = '';
+
+    // Acciones rápidas (Llamar, Correo, Mapa, PDF)
+    body += '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">';
+    if (row['TELEFONO']) body += '<a class="btn btn-outline btn-sm" href="tel:' + this.esc(row['TELEFONO']) + '">📞 Llamar</a>';
+    if (row['EMAIL']) body += '<a class="btn btn-outline btn-sm" href="mailto:' + this.esc(row['EMAIL']) + '">✉️ Correo</a>';
+    if (row['UBICACION']) body += '<a class="btn btn-outline btn-sm" target="_blank" href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(row['UBICACION']) + '">📍 Ver Mapa</a>';
+    if (row['PDF'] && String(row['PDF']).startsWith('http')) {
+      body += '<a class="btn btn-success btn-sm" target="_blank" href="' + this.esc(row['PDF']) + '">📄 Abrir PDF</a>';
+    }
+    if (schema.hasPdfBot) {
+      body += '<button class="btn btn-primary btn-sm" onclick="App.regeneratePdf(\'' + this.escJs(tableName) + '\',' + rowNumber + ')">🔄 Generar PDF</button>';
+    }
+    body += '<button class="btn btn-danger btn-sm" onclick="App.deleteRow(\'' + this.escJs(tableName) + '\',' + rowNumber + ')">🗑️ Eliminar</button>';
+    body += '</div>';
+
+    schema.columns.forEach(col => {
+      const val = row[col.name];
+      if (val === undefined || val === null || val === '') return;
+      let valHtml = this.esc(val);
+      if ((col.type === 'Image' || col.type === 'Signature' || col.type === 'File' || col.type === 'Url') && String(val).startsWith('http')) {
+        valHtml = '<a href="' + this.esc(val) + '" target="_blank" style="color:var(--primary);font-weight:500;">Abrir archivo en Drive ↗</a>';
+      }
+      body += '<div class="detail-row"><strong>' + this.esc(col.displayName || col.name) + '</strong><span>' + valHtml + '</span></div>';
+    });
+
+    document.getElementById('modalBody').innerHTML = body;
+    document.getElementById('detailModal').classList.add('open');
+  },
+
+  closeModal() {
+    document.getElementById('detailModal').classList.remove('open');
+  },
+
+  regeneratePdf(tableName, rowNumber) {
+    this.showLoader('Generando informe PDF en Drive...');
+    google.script.run
+      .withSuccessHandler(res => {
+        this.hideLoader();
+        this.closeModal();
+        this.toast('PDF generado y guardado en Drive.');
+        if (res && res.pdf && res.pdf.url) window.open(res.pdf.url, '_blank');
+        this.renderTable(tableName);
+      })
+      .withFailureHandler(err => {
+        this.hideLoader();
+        this.toast('Error PDF: ' + err.message);
+      })
+      .apiRegeneratePdf(tableName, rowNumber);
+  },
+
+  deleteRow(tableName, rowNumber) {
+    if (!confirm('¿Seguro que deseas borrar este registro? Esta acción no se puede deshacer.')) return;
+    this.showLoader('Eliminando registro...');
+    google.script.run
+      .withSuccessHandler(() => {
+        this.hideLoader();
+        this.closeModal();
+        this.toast('Registro eliminado.');
+        this.renderTable(tableName);
+      })
+      .withFailureHandler(err => {
+        this.hideLoader();
+        this.toast('Error al eliminar: ' + err.message);
+      })
+      .apiDeleteRecord(tableName, rowNumber);
+  },
+
+  exportCurrentTableCSV(tableName) {
+    if (!this.currentTableData || !this.currentTableData.rows) return;
+    const headers = this.currentTableData.headers;
+    const rows = this.currentTableData.rows;
+    const csvLines = [headers.map(h => '"' + String(h).replace(/"/g, '""') + '"').join(';')];
+    rows.forEach(r => {
+      csvLines.push(headers.map(h => '"' + String(r[h] || '').replace(/"/g, '""') + '"').join(';'));
+    });
+    const blob = new Blob(['\uFEFF' + csvLines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = tableName.replace(/\s+/g, '_') + '_' + new Date().toISOString().slice(0, 10) + '.csv';
+    a.click();
+  },
+
+  // ==========================================================================
+  // MAPA INTERACTIVO (FISCALIZACIONES COMERCIALES)
+  // ==========================================================================
+  renderMap(tableName) {
+    const tablesWithLoc = ['COMERCIO', 'FUERA DE HORA', 'GIGANTOGRAFIA', 'PATENTES EN MORA', 'ASISTENCIA', 'REPORTE', 'SEMANA PEÑAFLORINA'];
+    let opts = '';
+    tablesWithLoc.forEach(t => {
+      opts += '<option value="' + t + '"' + (t === tableName ? ' selected' : '') + '>' + this.esc(this.boot.schemas[t].label) + '</option>';
+    });
+
+    document.getElementById('appView').innerHTML =
+      '<div class="section-header"><h2>Mapa de Fiscalizaciones</h2>' +
+      '<select class="form-control" style="max-width:260px;" onchange="App.renderMap(this.value)">' + opts + '</select>' +
+      '</div><div id="mapContainer"></div>';
+
+    this.showLoader('Cargando ubicaciones GPS...');
+    google.script.run
+      .withSuccessHandler(points => {
+        this.hideLoader();
+        if (this.leafletMap) { this.leafletMap.remove(); this.leafletMap = null; }
+        this.leafletMap = L.map('mapContainer').setView([-33.6063, -70.8764], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '&copy; OpenStreetMap'
+        }).addTo(this.leafletMap);
+
+        const bounds = [];
+        (points || []).forEach(p => {
+          bounds.push([p.lat, p.lng]);
+          L.marker([p.lat, p.lng]).addTo(this.leafletMap)
+            .bindPopup('<strong>' + this.esc(p.title) + '</strong><br>' +
+              this.esc(p.subtitle) + '<br><small>Inspector: ' + this.esc(p.inspector) + ' | ' + this.esc(p.fecha) + '</small>');
+        });
+        if (bounds.length > 0) this.leafletMap.fitBounds(bounds, { padding: [30, 30] });
+        else this.toast('No se encontraron registros con coordenadas GPS en ' + tableName);
+      })
+      .withFailureHandler(err => {
+        this.hideLoader();
+        this.toast('Error mapa: ' + err.message);
+      })
+      .apiGetMapPoints(tableName);
+  },
+
+  // ==========================================================================
+  // DASHBOARD (6 GRÁFICOS EXACTOS DE APPSHEET)
+  // ==========================================================================
+  renderDashboard() {
+    this.showLoader('Calculando estadísticas del Dashboard...');
+    google.script.run
+      .withSuccessHandler(stats => {
+        this.hideLoader();
+        this.chartInstances.forEach(c => c.destroy());
+        this.chartInstances = [];
+
+        const k = stats.kpis;
+        const html = '<div class="section-header"><h2>Dashboard Estadístico</h2></div>' +
+          '<div class="kpi-grid">' +
+          '<div class="kpi-card"><div class="kpi-label">Fis. Comerciales</div><div class="kpi-value">' + k.totalComercio + '</div></div>' +
+          '<div class="kpi-card"><div class="kpi-label">Fuera de Horario</div><div class="kpi-value">' + k.totalFueraHora + '</div></div>' +
+          '<div class="kpi-card"><div class="kpi-label">Publicidad</div><div class="kpi-value">' + k.totalPublicidad + '</div></div>' +
+          '<div class="kpi-card"><div class="kpi-label">Patentes en Mora ($)</div><div class="kpi-value">$' + Number(k.totalMoraMonto || 0).toLocaleString('es-CL') + '</div></div>' +
+          '<div class="kpi-card"><div class="kpi-label">Reportes Jefatura</div><div class="kpi-value">' + k.totalReportes + '</div></div>' +
+          '<div class="kpi-card"><div class="kpi-label">Feriantes Registrados</div><div class="kpi-value">' + k.totalFeriantes + '</div></div>' +
+          '</div>' +
+          '<div class="charts-grid">' +
+          '<div class="chart-card"><h3>TOP INSPECTOR FISCALIZADOR (Comercio)</h3><div class="chart-box"><canvas id="ch1"></canvas></div></div>' +
+          '<div class="chart-card"><h3>TOP INSPECTORES PUBLICIDAD</h3><div class="chart-box"><canvas id="ch2"></canvas></div></div>' +
+          '<div class="chart-card"><h3>TOP INSPECTORES FUERA DE HORA</h3><div class="chart-box"><canvas id="ch3"></canvas></div></div>' +
+          '<div class="chart-card"><h3>CUENTA CON SU PATENTE / PERMISO AL DÍA</h3><div class="chart-box"><canvas id="ch4"></canvas></div></div>' +
+          '<div class="chart-card"><h3>VALOR DE PATENTES EN MORA ($)</h3><div class="chart-box"><canvas id="ch5"></canvas></div></div>' +
+          '<div class="chart-card"><h3>TOTALES DE PATENTES MORA COMERCIALES</h3><div class="chart-box"><canvas id="ch6"></canvas></div></div>' +
+          '</div>';
+
+        document.getElementById('appView').innerHTML = html;
+
+        const palette = ['#0b7bde', '#12b76a', '#f79009', '#f04438', '#7a5af8', '#06aed4', '#ee46bc'];
+        const draw = (id, type, items, horizontal) => {
+          const ctx = document.getElementById(id);
+          if (!ctx) return;
+          const ch = new Chart(ctx, {
+            type,
+            data: {
+              labels: items.map(i => i.label),
+              datasets: [{
+                label: 'Cantidad / Monto',
+                data: items.map(i => i.value),
+                backgroundColor: type === 'doughnut' ? palette : '#0b7bde',
+                borderRadius: type === 'bar' ? 6 : 0
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              indexAxis: horizontal ? 'y' : 'x',
+              plugins: { legend: { display: type === 'doughnut', position: 'bottom' } }
+            }
+          });
+          this.chartInstances.push(ch);
+        };
+
+        draw('ch1', 'bar', stats.charts.topFiscalizador, false);
+        draw('ch2', 'bar', stats.charts.topPublicidad, false);
+        draw('ch3', 'bar', stats.charts.topFueraHora, true);
+        draw('ch4', 'doughnut', stats.charts.permisoAlDia, false);
+        draw('ch5', 'doughnut', stats.charts.valorPatentesMora, false);
+        draw('ch6', 'bar', stats.charts.totalesPatentesMora, false);
+      })
+      .withFailureHandler(err => {
+        this.hideLoader();
+        this.toast('Error Dashboard: ' + err.message);
+      })
+      .apiGetDashboardStats();
+  },
+
+  // ==========================================================================
+  // RESPALDO EXCEL Y CARPETAS INDEPENDIENTES EN DRIVE
+  // ==========================================================================
+  renderBackupPanel() {
+    const f = this.boot.driveFolders || {};
+    const html = '<div class="section-header"><h2>Respaldo Excel (.xlsx) y Carpetas Drive</h2></div>' +
+      '<div class="card">' +
+      '<h3 style="margin-top:0;">Carpetas Independientes en Google Drive</h3>' +
+      '<p style="color:var(--muted);font-size:13px;">Todos los archivos de INSPECTOR COMERCIAL se organizan automáticamente en carpetas separadas dentro de <strong>INSPECTOR_COMERCIAL_DRIVE</strong>:</p>' +
+      '<div class="gallery-grid">' +
+      '<a class="menu-card" style="text-decoration:none;" href="' + this.esc(f.root ? f.root.url : '#') + '" target="_blank"><div class="card-icon"><span class="material-icons">folder</span></div><div class="card-title">Carpeta Raíz App</div></a>' +
+      '<a class="menu-card" style="text-decoration:none;" href="' + this.esc(f.fotos ? f.fotos.url : '#') + '" target="_blank"><div class="card-icon"><span class="material-icons">photo_library</span></div><div class="card-title">FOTOS (por módulo/registro)</div></a>' +
+      '<a class="menu-card" style="text-decoration:none;" href="' + this.esc(f.firmas ? f.firmas.url : '#') + '" target="_blank"><div class="card-icon"><span class="material-icons">draw</span></div><div class="card-title">FIRMAS Digitales</div></a>' +
+      '<a class="menu-card" style="text-decoration:none;" href="' + this.esc(f.pdfs ? f.pdfs.url : '#') + '" target="_blank"><div class="card-icon"><span class="material-icons">picture_as_pdf</span></div><div class="card-title">DOCUMENTOS PDF (5 Bots)</div></a>' +
+      '<a class="menu-card" style="text-decoration:none;" href="' + this.esc(f.excel ? f.excel.url : '#') + '" target="_blank"><div class="card-icon"><span class="material-icons">table_view</span></div><div class="card-title">RESPALDOS EXCEL (.xlsx)</div></a>' +
+      '</div></div>' +
+      '<div class="card">' +
+      '<h3 style="margin-top:0;">Generar Respaldo en Excel (.xlsx)</h3>' +
+      '<p style="color:var(--muted);font-size:13px;">Exporta una copia completa en formato Microsoft Excel (.xlsx) de <strong>INSPECTOR COMERCIAL</strong> y <strong>REGISTRO DE NOTIFICACIONES POR DEUDAS</strong> directamente a tu carpeta de respaldos en Drive.</p>' +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">' +
+      '<button class="btn btn-primary" onclick="App.runExcelBackup()"><span class="material-icons">cloud_download</span> Generar Respaldo Excel Ahora</button>' +
+      '<button class="btn btn-outline" onclick="App.toggleDailyBackup(' + (!this.boot.dailyBackupEnabled) + ')">' +
+      (this.boot.dailyBackupEnabled ? '🔕 Desactivar Respaldo Diario (23:00)' : '⏰ Activar Respaldo Diario Automático (23:00)') +
+      '</button></div>' +
+      '<div id="backupListBox" style="margin-top:16px;">Cargando historial de respaldos...</div>' +
+      '</div>';
+
+    document.getElementById('appView').innerHTML = html;
+    this.loadBackupHistory();
+  },
+
+  loadBackupHistory() {
+    google.script.run
+      .withSuccessHandler(list => {
+        const box = document.getElementById('backupListBox');
+        if (!box) return;
+        if (!list || list.length === 0) {
+          box.innerHTML = '<p style="color:var(--muted);font-size:13px;">Aún no hay respaldos Excel generados.</p>';
+          return;
+        }
+        let html = '<div class="table-wrap"><table class="data-table"><thead><tr><th>Archivo Excel</th><th>Fecha</th><th>Tamaño</th><th>Acción</th></tr></thead><tbody>';
+        list.forEach(b => {
+          html += '<tr><td>' + this.esc(b.name) + '</td><td>' + this.esc(b.date) + '</td><td>' + b.sizeKb + ' KB</td>' +
+            '<td><a class="btn btn-outline btn-sm" href="' + this.esc(b.downloadUrl) + '" target="_blank">Descargar .xlsx</a></td></tr>';
+        });
+        html += '</tbody></table></div>';
+        box.innerHTML = html;
+      })
+      .apiListExcelBackups();
+  },
+
+  runExcelBackup() {
+    this.showLoader('Exportando ambas planillas a Excel (.xlsx) en Drive...');
+    google.script.run
+      .withSuccessHandler(res => {
+        this.hideLoader();
+        const okCount = (res.files || []).filter(f => f.ok).length;
+        this.toast('Respaldo Excel completado (' + okCount + ' archivo(s) .xlsx guardados en Drive).');
+        this.loadBackupHistory();
+      })
+      .withFailureHandler(err => {
+        this.hideLoader();
+        this.toast('Error respaldo Excel: ' + err.message);
+      })
+      .apiRunExcelBackup();
+  },
+
+  toggleDailyBackup(enable) {
+    this.showLoader('Actualizando programación automática...');
+    google.script.run
+      .withSuccessHandler(res => {
+        this.hideLoader();
+        this.boot.dailyBackupEnabled = enable;
+        this.toast(res.message);
+        this.renderBackupPanel();
+      })
+      .withFailureHandler(err => {
+        this.hideLoader();
+        this.toast('Error: ' + err.message);
+      })
+      .apiToggleDailyBackup(enable);
+  },
+
+  // ==========================================================================
+  // UTILIDADES UI
+  // ==========================================================================
+  showLoader(text) {
+    document.getElementById('loaderText').textContent = text || 'Procesando...';
+    document.getElementById('globalLoader').classList.add('open');
+  },
+  hideLoader() {
+    document.getElementById('globalLoader').classList.remove('open');
+  },
+  toast(msg) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(this._toastTimer);
+    this._toastTimer = setTimeout(() => el.classList.remove('show'), 4200);
+  },
+  esc(s) {
+    return String(s === undefined || s === null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  },
+  escJs(s) {
+    return String(s === undefined || s === null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  }
+};
+
+window.addEventListener('DOMContentLoaded', () => App.init());
+</script>
