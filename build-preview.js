@@ -24,10 +24,12 @@ if (typeof google === 'undefined' || !google.script) {
     window.__GAS_LIVE_CONNECTED__ = Boolean(LIVE_API_URL);
 
     function callLiveGas(action, payload) {
-      var isRead = (action === 'bootstrap' || action === 'rows' || action === 'dashboard' || action === 'map' || action === 'listExcelBackups');
+      var isRead = (action === 'bootstrap' || action === 'rows' || action === 'dashboard' || action === 'map' || action === 'listExcelBackups' || action === 'feriaAttendance');
       if (isRead) {
         var qs = '?action=' + encodeURIComponent(action);
         if (payload && payload.table) qs += '&table=' + encodeURIComponent(payload.table);
+        if (payload && payload.feria) qs += '&feria=' + encodeURIComponent(payload.feria);
+        if (payload && payload.fecha) qs += '&fecha=' + encodeURIComponent(payload.fecha);
         return fetch(LIVE_API_URL + qs, { method: 'GET' }).then(function(r) { return r.json(); });
       }
       return fetch(LIVE_API_URL, {
@@ -223,7 +225,44 @@ if (typeof google === 'undefined' || !google.script) {
       },
       apiRunExcelBackup: function() { return Promise.resolve({ timestamp: new Date().toLocaleString('es-CL'), files: [{ ok: true, name: 'INSPECTOR_COMERCIAL.xlsx' }] }); },
       apiListExcelBackups: function() { return Promise.resolve([]); },
-      apiToggleDailyBackup: function(enable) { return Promise.resolve({ ok: true, message: enable ? 'Respaldo diario activado (23:00 hrs).' : 'Respaldo diario desactivado.' }); }
+      apiToggleDailyBackup: function(enable) { return Promise.resolve({ ok: true, message: enable ? 'Respaldo diario activado (23:00 hrs).' : 'Respaldo diario desactivado.' }); },
+      apiGetFeriaAttendance: function(feria, fecha) {
+        var key = 'inspector_feria_att_v3_' + String(feria || '').toUpperCase() + '_' + String(fecha || '');
+        var marks = {};
+        try { marks = JSON.parse(localStorage.getItem(key) || '{}'); } catch(e) {}
+        return Promise.resolve({ feria: feria, fecha: fecha, marks: marks });
+      },
+      apiSaveFeriaAttendance: function(payload) {
+        var feria = String(payload.feria || '').toUpperCase();
+        var fecha = String(payload.fecha || new Date().toISOString().slice(0, 10));
+        var puesto = Number(payload.puesto);
+        var key = 'inspector_feria_att_v3_' + feria + '_' + fecha;
+        var marks = {};
+        try { marks = JSON.parse(localStorage.getItem(key) || '{}'); } catch(e) {}
+        var now = new Date();
+        var hora = now.toTimeString().slice(0, 8);
+        var mark = {
+          idRegistro: (marks[puesto] && marks[puesto].idRegistro) || Math.random().toString(16).slice(2, 10).toUpperCase(),
+          fecha: fecha,
+          hora: hora,
+          feria: feria,
+          puesto: puesto,
+          idFeriante: payload.idFeriante || '',
+          nombre: payload.nombre || '',
+          rut: payload.rut || '',
+          rol: payload.rol || '',
+          patente: payload.patente || '',
+          giro: payload.giro || '',
+          estado: payload.estado || 'ASISTE',
+          medio: payload.medio || 'MANUAL',
+          inspector: payload.inspector || '',
+          ubicacion: payload.ubicacion || '',
+          observaciones: payload.observaciones || ''
+        };
+        marks[puesto] = mark;
+        try { localStorage.setItem(key, JSON.stringify(marks)); } catch(e) {}
+        return Promise.resolve({ ok: true, mark: mark });
+      }
     };
 
     var LIVE_MAP = {
@@ -236,7 +275,9 @@ if (typeof google === 'undefined' || !google.script) {
       apiGetMapPoints: function(table) { return callLiveGas('map', { table: table }); },
       apiRunExcelBackup: function() { return callLiveGas('runExcelBackup'); },
       apiListExcelBackups: function() { return callLiveGas('listExcelBackups'); },
-      apiToggleDailyBackup: function(enable) { return callLiveGas('toggleDailyBackup', { enable: enable }); }
+      apiToggleDailyBackup: function(enable) { return callLiveGas('toggleDailyBackup', { enable: enable }); },
+      apiGetFeriaAttendance: function(feria, fecha) { return callLiveGas('feriaAttendance', { feria: feria, fecha: fecha }); },
+      apiSaveFeriaAttendance: function(payload) { return callLiveGas('saveFeriaAttendance', { payload: payload }); }
     };
 
     function makeRunner(okCb, errCb) {
