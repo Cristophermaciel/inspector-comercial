@@ -1768,10 +1768,7 @@ const App = {
     if (tableName === 'PATENTES EN MORA' && data.summary) {
       summaryBanner = '<div class="kpi-grid"><div class="kpi-card">' +
         '<div class="kpi-label">TOTAL DE PATENTES MOROSAS</div>' +
-        '<div class="kpi-value">
-</body>
-</html>
- + Number(data.summary.totalPatentesMorosas || 0).toLocaleString('es-CL') + '</div>' +
+        '<div class="kpi-value">$' + Number(data.summary.totalPatentesMorosas || 0).toLocaleString('es-CL') + '</div>' +
         '</div><div class="kpi-card">' +
         '<div class="kpi-label">REGISTROS TOTALES</div>' +
         '<div class="kpi-value">' + filtered.length + '</div>' +
@@ -1976,10 +1973,7 @@ const App = {
           '<div class="kpi-card"><div class="kpi-label">Fis. Comerciales</div><div class="kpi-value">' + k.totalComercio + '</div></div>' +
           '<div class="kpi-card"><div class="kpi-label">Fuera de Horario</div><div class="kpi-value">' + k.totalFueraHora + '</div></div>' +
           '<div class="kpi-card"><div class="kpi-label">Publicidad</div><div class="kpi-value">' + k.totalPublicidad + '</div></div>' +
-          '<div class="kpi-card"><div class="kpi-label">Patentes en Mora ($)</div><div class="kpi-value">
-</body>
-</html>
- + Number(k.totalMoraMonto || 0).toLocaleString('es-CL') + '</div></div>' +
+          '<div class="kpi-card"><div class="kpi-label">Patentes en Mora ($)</div><div class="kpi-value">$' + Number(k.totalMoraMonto || 0).toLocaleString('es-CL') + '</div></div>' +
           '<div class="kpi-card"><div class="kpi-label">Reportes Jefatura</div><div class="kpi-value">' + k.totalReportes + '</div></div>' +
           '<div class="kpi-card"><div class="kpi-label">Feriantes Registrados</div><div class="kpi-value">' + k.totalFeriantes + '</div></div>' +
           '</div>' +

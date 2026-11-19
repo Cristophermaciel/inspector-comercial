@@ -212,10 +212,10 @@ if (typeof google === 'undefined' || !google.script) {
 `;
 
 const output = indexTpl
-  .replace(/<\?=\s*appName\s*\?>/g, 'INSPECTOR COMERCIAL')
-  .replace(/<\?=\s*subtitle\s*\?>/g, 'Dirección Seguridad Pública Peñaflor')
-  .replace(/<\?!=\s*include\('Styles'\);\s*\?>/g, styles)
-  .replace(/<\?!=\s*include\('AppScript'\);\s*\?>/g, previewShim + '\n' + appScript);
+  .replace(/<\?=\s*appName\s*\?>/g, () => 'INSPECTOR COMERCIAL')
+  .replace(/<\?=\s*subtitle\s*\?>/g, () => 'Dirección Seguridad Pública Peñaflor')
+  .replace(/<\?!=\s*include\('Styles'\);\s*\?>/g, () => styles)
+  .replace(/<\?!=\s*include\('AppScript'\);\s*\?>/g, () => previewShim + '\n' + appScript);
 
 fs.writeFileSync(path.join(__dirname, 'index.html'), output, 'utf8');
 console.log('Generated index.html successfully (' + output.length + ' bytes)');
