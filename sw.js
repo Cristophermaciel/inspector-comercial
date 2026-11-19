@@ -1,9 +1,10 @@
-const CACHE_NAME = 'inspectores-penaflor-v2';
+const CACHE_NAME = 'inspectores-penaflor-v3';
 const CORE_ASSETS = [
   './',
   './index.html',
   './manifest.json',
-  './assets/logo-penaflor.jpg'
+  './assets/logo-penaflor.jpg',
+  './data/initial-data.json'
 ];
 
 self.addEventListener('install', event => {
