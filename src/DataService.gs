@@ -423,5 +423,137 @@ const DataService = {
     d.setHours(0, 0, 0, 0);
     const diff = Math.round((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
     return String(diff);
+  },
+
+  // ==========================================================================
+  // CONTROL DE ASISTENCIA INDEPENDIENTE POR FERIA (PUESTOS 1 AL 100 + QR)
+  // Crea automáticamente una hoja independiente por cada feria en Google Sheets:
+  // CONTROL_FERIA_MODELO, CONTROL_FERIA_LAS_PRADERAS, etc.
+  // ==========================================================================
+  _getOrCreateFeriaControlSheet(feriaName) {
+    const ss = this._getSpreadsheet('MAIN');
+    const clean = String(feriaName || 'GENERAL').toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '');
+    const sheetName = ('CONTROL_FERIA_' + clean).substring(0, 31);
+    let sheet = ss.getSheetByName(sheetName);
+    const headers = [
+      'ID_REGISTRO', 'FECHA_JORNADA', 'HORA_MARCA', 'FERIA', 'N_PUESTO',
+      'ID_FERIANTE', 'NOMBRE_DUENO', 'RUT_DUENO', 'ROL', 'PATENTE',
+      'GIRO', 'ESTADO_ASISTENCIA', 'MEDIO_INGRESO', 'INSPECTOR',
+      'UBICACION_PUESTO', 'OBSERVACIONES'
+    ];
+    if (!sheet) {
+      sheet = ss.insertSheet(sheetName);
+      sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+      sheet.setFrozenRows(1);
+    }
+    return { sheet, headers, sheetName };
+  },
+
+  getFeriaAttendance(feriaName, fechaStr) {
+    const { sheet, headers } = this._getOrCreateFeriaControlSheet(feriaName);
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) return { feria: feriaName, fecha: fechaStr, marks: {} };
+
+    const values = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
+    const marks = {};
+    values.forEach((row, idx) => {
+      const fVal = row[1] instanceof Date
+        ? Utilities.formatDate(row[1], APP_CONFIG.TIMEZONE, 'yyyy-MM-dd')
+        : String(row[1] || '').trim();
+      if (fechaStr && fVal !== fechaStr) return;
+      const puesto = Number(row[4]);
+      if (!puesto) return;
+      marks[puesto] = {
+        _RowNumber: idx + 2,
+        idRegistro: row[0],
+        fecha: fVal,
+        hora: row[2] instanceof Date ? Utilities.formatDate(row[2], APP_CONFIG.TIMEZONE, 'HH:mm:ss') : String(row[2] || ''),
+        feria: row[3],
+        puesto: puesto,
+        idFeriante: row[5],
+        nombre: row[6],
+        rut: row[7],
+        rol: row[8],
+        patente: row[9],
+        giro: row[10],
+        estado: row[11],
+        medio: row[12],
+        inspector: row[13],
+        ubicacion: row[14],
+        observaciones: row[15]
+      };
+    });
+    return { feria: feriaName, fecha: fechaStr, marks };
+  },
+
+  saveFeriaAttendance(payload) {
+    const lock = LockService.getScriptLock();
+    lock.waitLock(20000);
+    try {
+      const feria = String(payload.feria || '').toUpperCase().trim();
+      const fecha = String(payload.fecha || Utilities.formatDate(new Date(), APP_CONFIG.TIMEZONE, 'yyyy-MM-dd')).trim();
+      const puesto = Number(payload.puesto);
+      if (!feria || !puesto) throw new Error('Feria y N° de puesto son obligatorios.');
+
+      const { sheet, headers } = this._getOrCreateFeriaControlSheet(feria);
+      const hora = Utilities.formatDate(new Date(), APP_CONFIG.TIMEZONE, 'HH:mm:ss');
+
+      // Buscar si ya existe marca para esta feria + fecha + puesto para actualizarla
+      const lastRow = sheet.getLastRow();
+      let existingRow = null;
+      let idReg = Utilities.getUuid().substring(0, 8).toUpperCase();
+      if (lastRow >= 2) {
+        const existingVals = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
+        for (let i = 0; i < existingVals.length; i++) {
+          const rFecha = existingVals[i][1] instanceof Date
+            ? Utilities.formatDate(existingVals[i][1], APP_CONFIG.TIMEZONE, 'yyyy-MM-dd')
+            : String(existingVals[i][1] || '').trim();
+          if (rFecha === fecha && Number(existingVals[i][4]) === puesto) {
+            existingRow = i + 2;
+            idReg = existingVals[i][0] || idReg;
+            break;
+          }
+        }
+      }
+
+      const rowArr = [
+        idReg,
+        fecha,
+        hora,
+        feria,
+        puesto,
+        payload.idFeriante || '',
+        payload.nombre || '',
+        payload.rut || '',
+        payload.rol || '',
+        payload.patente || '',
+        payload.giro || '',
+        payload.estado || 'ASISTE',
+        payload.medio || 'MANUAL',
+        payload.inspector || '',
+        payload.ubicacion || '',
+        payload.observaciones || ''
+      ];
+
+      const targetRow = existingRow || (sheet.getLastRow() + 1);
+      sheet.getRange(targetRow, 1, 1, headers.length).setValues([rowArr]);
+
+      return {
+        ok: true,
+        mark: {
+          _RowNumber: targetRow,
+          idRegistro: idReg,
+          fecha,
+          hora,
+          feria,
+          puesto,
+          estado: rowArr[11],
+          medio: rowArr[12],
+          inspector: rowArr[13]
+        }
+      };
+    } finally {
+      lock.releaseLock();
+    }
   }
 };

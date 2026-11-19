@@ -70,6 +70,12 @@ function _handleApiRequest(action, params) {
       case 'toggleDailyBackup':
         result = params.enable ? BackupExcel.setupDailyBackupTrigger() : BackupExcel.removeDailyBackupTrigger();
         break;
+      case 'feriaAttendance':
+        result = DataService.getFeriaAttendance(params.feria, params.fecha);
+        break;
+      case 'saveFeriaAttendance':
+        result = DataService.saveFeriaAttendance(params.payload || {});
+        break;
       default:
         result = { ok: false, error: 'Acción no reconocida: ' + action };
     }
@@ -104,3 +110,5 @@ function apiRunExcelBackup() { return BackupExcel.runFullExcelBackup(); }
 function apiListExcelBackups() { return DriveManager.listExcelBackups(25); }
 function apiToggleDailyBackup(enable) { return enable ? BackupExcel.setupDailyBackupTrigger() : BackupExcel.removeDailyBackupTrigger(); }
 function apiEnsureDriveFolders() { return DriveManager.ensureBaseStructure(); }
+function apiGetFeriaAttendance(feria, fecha) { return DataService.getFeriaAttendance(feria, fecha); }
+function apiSaveFeriaAttendance(payload) { return DataService.saveFeriaAttendance(payload); }

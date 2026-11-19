@@ -17,6 +17,16 @@ const APP_CONFIG = {
   LOGO_URL: 'https://cristophermaciel.github.io/inspector-comercial/assets/logo-penaflor.jpg',
   TIMEZONE: 'America/Santiago',
 
+  // Ferias Libres independientes (cada una con puestos del 1 al 100)
+  FERIAS_LIST: [
+    'MODELO',
+    'LAS PRADERAS',
+    'MALLOQUITO',
+    'MANUEL GONZALES',
+    'LOS GUINDOS'
+  ],
+  FERIA_MAX_PUESTOS: 100,
+
   // Hojas de cálculo originales de AppSheet
   SPREADSHEETS: {
     MAIN: '1jsgsXgkJ2UfW9cZhbw02HUK795lyYjB_uxPwLizyp7I',
