@@ -1382,6 +1382,29 @@ var TABLE_SCHEMAS = {
     ]
   },
 
+  'FERIAS NAVIDEÑAS': {
+    spreadsheetKey: 'MAIN',
+    sheetName: 'FERIAS NAVIDEÑAS',
+    label: 'Ferias Navideñas',
+    icon: 'card_giftcard',
+    keyCol: 'ID',
+    labelCol: 'CONTROLADO POR',
+    hasPdfBot: false,
+    tableColumns: ['FECHA HORA', 'CONTROLADO POR', 'ESTADO DE PAGO', 'OBSERVACIONES'],
+    columns: [
+      { name: 'ID', type: 'Text', isKey: true, initial: 'UNIQUEID', hiddenInForm: true },
+      { name: 'CONTROLADO POR', type: 'Text' },
+      { name: 'FECHA HORA', type: 'DateTime', initial: 'NOW' },
+      { name: 'ESTADO DE PAGO', type: 'Enum', values: ['NO PAGA', 'PAGA DESPUES', 'SOLO VIERNES', 'SOLO SABADO', 'SOLO DOMINGO', 'VIERNES Y SABADO', 'SABADO Y DOMINGO', 'TODOS LOS DIAS', 'VIERNES Y DOMINGO'] },
+      { name: 'FOTO CARNET', type: 'Image' },
+      { name: 'FOTO VENTA', displayName: 'FOTO QUE VENDE', type: 'Image' },
+      { name: 'FOTO PATENTE', type: 'Image' },
+      { name: 'UBICACION', type: 'Location' },
+      { name: 'FIRMA', type: 'Signature' },
+      { name: 'OBSERVACIONES', type: 'LongText' }
+    ]
+  },
+
   'Hoja 1': {
     spreadsheetKey: 'DEUDAS',
     sheetName: 'Hoja 1',
@@ -1469,6 +1492,7 @@ var APPSHEET_VIEW_MAP = {
   'SEGUIMIENTOS DE MOROSOS': { kind: 'table', table: 'PATENTES EN MORA', title: 'Seguimiento de Morosos' },
   'DOCUMENTOS FISCALIZADOS': { kind: 'table', table: 'COMERCIO', title: 'Documentos Fiscalizados' },
   'SEMANA PEÑAFLORINA': { kind: 'table', table: 'SEMANA PEÑAFLORINA', title: 'Semana Peñaflorina' },
+  'FERIAS NAVIDEÑAS': { kind: 'table', table: 'FERIAS NAVIDEÑAS', title: 'Ferias Navideñas' },
   'New View': { kind: 'table', table: 'Hoja 1', title: 'Notificaciones por Deudas' },
   'FISCALIZACIONES COMERCIALES': { kind: 'map', table: 'COMERCIO', title: 'Mapa de Fiscalizaciones' },
   'DASHBOARD': { kind: 'dashboard', title: 'Dashboard Estadístico' }
@@ -1621,6 +1645,7 @@ var APPSHEET_VIEW_MAP = {
           var mora = getMergedRows(db, 'PATENTES EN MORA');
           var reportes = getMergedRows(db, 'REPORTE');
           var feriantes = getMergedRows(db, 'ASISTENCIA');
+          var feriasNavidenas = getMergedRows(db, 'FERIAS NAVIDEÑAS');
 
           var countBy = function(arr, col) {
             var m = {};
@@ -1647,7 +1672,8 @@ var APPSHEET_VIEW_MAP = {
               totalMoraCount: mora.length,
               totalMoraMonto: Math.round(totalMora),
               totalReportes: reportes.length,
-              totalFeriantes: feriantes.length
+              totalFeriantes: feriantes.length,
+              totalFeriasNavidenas: feriasNavidenas.length
             },
             charts: {
               topPublicidad: countBy(publicidad, 'INSPECTOR'),
@@ -1996,6 +2022,7 @@ const App = {
       { title: 'Registro Feria Libre', icon: 'storefront', route: { kind: 'form', table: 'ASISTENCIA', title: 'Registro Feria Libre' } },
       { title: 'Asistencia Ferias (1-100 + QR)', icon: 'qr_code_scanner', route: { kind: 'feriasHub', title: 'Asistencia Ferias Libres (1-100 + QR)' } },
       { title: 'Semana Peñaflorina', icon: 'festival', route: { kind: 'form', table: 'SEMANA PEÑAFLORINA', title: 'Semana Peñaflorina' } },
+      { title: 'Ferias Navideñas', icon: 'card_giftcard', route: { kind: 'form', table: 'FERIAS NAVIDEÑAS', title: 'Ferias Navideñas' } },
       { title: 'Notif. por Deudas', icon: 'notifications_active', route: { kind: 'table', table: 'Hoja 1', title: 'Notificaciones por Deudas' } },
       { title: 'Mapa Fiscalizaciones', icon: 'map', route: { kind: 'map', table: 'COMERCIO', title: 'Mapa de Fiscalizaciones' } },
       { title: 'Estadísticas / Dashboard', icon: 'bar_chart', route: { kind: 'dashboard', title: 'Estadísticas y Dashboard' } },
@@ -2015,7 +2042,7 @@ const App = {
   },
 
   renderFormsHub() {
-    const formTables = ['COMERCIO', 'FUERA DE HORA', 'GIGANTOGRAFIA', 'PATENTES EN MORA', 'REPORTE', 'ASISTENCIA', 'SEMANA PEÑAFLORINA', 'Hoja 1', 'FUNCIONARIO'];
+    const formTables = ['COMERCIO', 'FUERA DE HORA', 'GIGANTOGRAFIA', 'PATENTES EN MORA', 'REPORTE', 'ASISTENCIA', 'SEMANA PEÑAFLORINA', 'FERIAS NAVIDEÑAS', 'Hoja 1', 'FUNCIONARIO'];
     let html = '<div class="section-header"><h2>Formularios de Ingreso</h2></div><div class="gallery-grid">';
     formTables.forEach(t => {
       const s = this.boot.schemas[t];
@@ -2030,7 +2057,7 @@ const App = {
   },
 
   renderTablesHub() {
-    const dataTables = ['COMERCIO', 'FUERA DE HORA', 'GIGANTOGRAFIA', 'PATENTES EN MORA', 'REPORTE', 'ASISTENCIA', 'SEMANA PEÑAFLORINA', 'Hoja 1', 'FUNCIONARIO', 'DOCUMENTOS'];
+    const dataTables = ['COMERCIO', 'FUERA DE HORA', 'GIGANTOGRAFIA', 'PATENTES EN MORA', 'REPORTE', 'ASISTENCIA', 'SEMANA PEÑAFLORINA', 'FERIAS NAVIDEÑAS', 'Hoja 1', 'FUNCIONARIO', 'DOCUMENTOS'];
     let html = '<div class="section-header"><h2>Listados y Planillas Excel</h2></div><div class="gallery-grid">';
     dataTables.forEach(t => {
       const s = this.boot.schemas[t];
@@ -2557,7 +2584,7 @@ const App = {
   // MAPA INTERACTIVO
   // ==========================================================================
   renderMap(tableName) {
-    const tablesWithLoc = ['COMERCIO', 'FUERA DE HORA', 'GIGANTOGRAFIA', 'PATENTES EN MORA', 'ASISTENCIA', 'REPORTE', 'SEMANA PEÑAFLORINA'];
+    const tablesWithLoc = ['COMERCIO', 'FUERA DE HORA', 'GIGANTOGRAFIA', 'PATENTES EN MORA', 'ASISTENCIA', 'REPORTE', 'SEMANA PEÑAFLORINA', 'FERIAS NAVIDEÑAS'];
     let opts = '';
     tablesWithLoc.forEach(t => {
       opts += '<option value="' + t + '"' + (t === tableName ? ' selected' : '') + '>' + this.esc(this.boot.schemas[t].label) + '</option>';
@@ -2615,6 +2642,7 @@ const App = {
           '<div class="kpi-card"><div class="kpi-label">Patentes en Mora ($)</div><div class="kpi-value">$' + Number(k.totalMoraMonto || 0).toLocaleString('es-CL') + '</div></div>' +
           '<div class="kpi-card"><div class="kpi-label">Reportes Jefatura</div><div class="kpi-value">' + k.totalReportes + '</div></div>' +
           '<div class="kpi-card"><div class="kpi-label">Feriantes Registrados</div><div class="kpi-value">' + k.totalFeriantes + '</div></div>' +
+          '<div class="kpi-card"><div class="kpi-label">Ferias Navideñas</div><div class="kpi-value">' + (k.totalFeriasNavidenas || 0) + '</div></div>' +
           '</div>' +
           '<div class="charts-grid">' +
           '<div class="chart-card"><h3>TOP INSPECTOR FISCALIZADOR (Comercio)</h3><div class="chart-box"><canvas id="ch1"></canvas></div></div>' +

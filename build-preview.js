@@ -166,6 +166,7 @@ if (typeof google === 'undefined' || !google.script) {
           var mora = getMergedRows(db, 'PATENTES EN MORA');
           var reportes = getMergedRows(db, 'REPORTE');
           var feriantes = getMergedRows(db, 'ASISTENCIA');
+          var feriasNavidenas = getMergedRows(db, 'FERIAS NAVIDEÑAS');
 
           var countBy = function(arr, col) {
             var m = {};
@@ -192,7 +193,8 @@ if (typeof google === 'undefined' || !google.script) {
               totalMoraCount: mora.length,
               totalMoraMonto: Math.round(totalMora),
               totalReportes: reportes.length,
-              totalFeriantes: feriantes.length
+              totalFeriantes: feriantes.length,
+              totalFeriasNavidenas: feriasNavidenas.length
             },
             charts: {
               topPublicidad: countBy(publicidad, 'INSPECTOR'),
