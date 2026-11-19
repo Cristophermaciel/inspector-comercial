@@ -849,6 +849,33 @@
     border-radius: 22px;
     margin: 6px 0 10px;
   }
+  .qr-profile-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    margin: 10px 0;
+  }
+  .qr-person-photo-wrap {
+    width: 112px;
+    height: 132px;
+    border-radius: 12px;
+    border: 2px solid var(--primary);
+    background: #eef4fc;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: var(--primary);
+  }
+  .qr-person-photo-wrap img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
   .qr-meta-list {
     text-align: left;
     font-size: 12.5px;
@@ -3084,13 +3111,83 @@ const App = {
     };
   },
 
+  _resolvePhotoSrc(val) {
+    if (!val) return '';
+    const s = String(val).trim();
+    if (s.startsWith('data:image/')) return s;
+    if (s.startsWith('http://') || s.startsWith('https://')) {
+      const m = s.match(/\/d\/([a-zA-Z0-9_-]+)/) || s.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+      if (m && s.indexOf('drive.google.com') !== -1) {
+        return 'https://drive.google.com/thumbnail?id=' + m[1] + '&sz=w400';
+      }
+      return s;
+    }
+    return '';
+  },
+
+  uploadStallPhotoFromCredential(input, puestoNum) {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    const stall = this.feriaState.stalls.find(s => s.puesto === Number(puestoNum));
+    if (!stall) return;
+
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        const maxDim = 600;
+        let w = img.width, h = img.height;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) { h = Math.round(h * maxDim / w); w = maxDim; }
+          else { w = Math.round(w * maxDim / h); h = maxDim; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+
+        // Guardar en el registro del feriante (ASISTENCIA)
+        const rec = stall.record
+          ? Object.assign({}, stall.record, { 'FOTO DUEÑO': dataUrl })
+          : { 'FERIA': stall.feria, 'N° Puesto': stall.puesto, 'NOMBRE DUEÑO': 'PUESTO #' + stall.puesto, 'FOTO DUEÑO': dataUrl };
+
+        this.showLoader('Guardando fotografía en la credencial...');
+        google.script.run
+          .withSuccessHandler(res => {
+            this.hideLoader();
+            if (res && res.record) {
+              stall.record = res.record;
+              // Actualizar caché en memoria
+              const idx = (this.feriaState.allAsistenciaRows || []).findIndex(r => Number(r._RowNumber) === Number(res.record._RowNumber));
+              if (idx !== -1) this.feriaState.allAsistenciaRows[idx] = res.record;
+              else this.feriaState.allAsistenciaRows.unshift(res.record);
+            }
+            this.toast('Foto del titular actualizada en la credencial.');
+            this.openStallQrModal(puestoNum);
+          })
+          .withFailureHandler(err => {
+            this.hideLoader();
+            this.toast('Error guardando foto: ' + err.message);
+          })
+          .apiSaveRecord('ASISTENCIA', rec, { 'FOTO DUEÑO': dataUrl });
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  },
+
   openStallQrModal(puestoNum) {
     const stall = this.feriaState.stalls.find(s => s.puesto === Number(puestoNum));
     if (!stall) return;
     const payload = this._buildStallQrPayload(stall);
     const qrText = JSON.stringify(payload);
+    const photoSrc = stall.record ? this._resolvePhotoSrc(stall.record['FOTO DUEÑO']) : '';
+    const photoHtml = photoSrc
+      ? '<img src="' + this.esc(photoSrc) + '" alt="Foto Titular">'
+      : '<span class="material-icons" style="font-size:48px;opacity:0.45;">person</span><span style="font-size:10px;opacity:0.75;padding:0 6px;">Sin foto cargada</span>';
 
-    document.getElementById('modalTitle').textContent = 'Código QR Individual — Feria ' + stall.feria + ' Puesto #' + stall.puesto;
+    document.getElementById('modalTitle').textContent = 'Credencial QR — Feria ' + stall.feria + ' Puesto #' + stall.puesto;
     document.getElementById('modalBody').innerHTML =
       '<div class="qr-card-print" id="qrPrintArea">' +
       '<div class="qr-card-header">' +
@@ -3099,7 +3196,10 @@ const App = {
       '</div>' +
       '<div style="font-size:14px;font-weight:700;color:#0c347d;">FERIA ' + this.esc(stall.feria) + '</div>' +
       '<div class="qr-puesto-big">PUESTO N° ' + stall.puesto + '</div>' +
-      '<div class="qr-box-center"><div id="qrCanvasTarget"></div></div>' +
+      '<div class="qr-profile-row">' +
+      '<div class="qr-person-photo-wrap">' + photoHtml + '</div>' +
+      '<div id="qrCanvasTarget"></div>' +
+      '</div>' +
       '<div style="font-size:11px;color:#667085;font-weight:600;">CÓDIGO ÚNICO: ' + this.esc(stall.uid) + '</div>' +
       '<div class="qr-meta-list">' +
       '<div><strong>Titular:</strong> ' + this.esc(payload.nombre) + '</div>' +
@@ -3109,6 +3209,8 @@ const App = {
       '<div><strong>Ubicación GPS:</strong> ' + this.esc(payload.ubicacion || 'Sin coordenadas registradas') + '</div>' +
       '</div></div>' +
       '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:14px;">' +
+      '<label class="btn btn-success btn-sm" style="margin:0;cursor:pointer;"><span class="material-icons" style="font-size:16px;">add_a_photo</span> ' + (photoSrc ? 'Cambiar Foto Titular' : 'Cargar Foto Titular') +
+      '<input type="file" accept="image/*" capture="user" style="display:none;" onchange="App.uploadStallPhotoFromCredential(this,' + stall.puesto + ')"></label>' +
       '<button class="btn btn-primary btn-sm" onclick="App.downloadQrPng(\'' + this.escJs(stall.uid) + '\')"><span class="material-icons" style="font-size:16px;">download</span> Descargar QR (PNG)</button>' +
       '<button class="btn btn-outline btn-sm" onclick="App.printSingleQr()"><span class="material-icons" style="font-size:16px;">print</span> Imprimir Credencial</button>' +
       '</div>';
@@ -3121,8 +3223,8 @@ const App = {
         target.innerHTML = '';
         new QRCode(target, {
           text: qrText,
-          width: 210,
-          height: 210,
+          width: 150,
+          height: 150,
           colorDark: '#0c347d',
           colorLight: '#ffffff',
           correctLevel: QRCode.CorrectLevel.M
@@ -3149,10 +3251,10 @@ const App = {
     let htmlCopy = area.outerHTML;
     if (canvas) {
       const dataUrl = canvas.toDataURL('image/png');
-      htmlCopy = htmlCopy.replace(/<canvas[\s\S]*?<\/canvas>/, '<img src="' + dataUrl + '" style="width:210px;height:210px;">');
+      htmlCopy = htmlCopy.replace(/<canvas[\s\S]*?<\/canvas>/, '<img src="' + dataUrl + '" style="width:150px;height:150px;">');
     }
     const w = window.open('', '_blank', 'width=460,height=680');
-    w.document.write('<!DOCTYPE html><html><head><title>Credencial QR</title><style>body{font-family:Arial,sans-serif;padding:20px;text-align:center;}.qr-card-print{border:2px solid #0c347d;border-radius:14px;padding:18px;max-width:360px;margin:0 auto;}.qr-card-header{display:flex;align-items:center;justify-content:center;gap:10px;border-bottom:2px solid #0c347d;padding-bottom:10px;margin-bottom:10px;}.qr-card-header img{height:42px;}.qr-puesto-big{display:inline-block;background:#0c347d;color:#fff;font-size:18px;font-weight:700;padding:6px 18px;border-radius:20px;margin:6px 0 10px;}.qr-meta-list{text-align:left;font-size:12px;line-height:1.5;background:#f8fafc;border:1px solid #dce4f0;border-radius:8px;padding:10px;margin-top:10px;}</style></head><body>' + htmlCopy + '<script>window.onload=function(){window.print();};<\/script></body></html>');
+    w.document.write('<!DOCTYPE html><html><head><title>Credencial QR</title><style>body{font-family:Arial,sans-serif;padding:20px;text-align:center;}.qr-card-print{border:2px solid #0c347d;border-radius:14px;padding:18px;max-width:380px;margin:0 auto;}.qr-card-header{display:flex;align-items:center;justify-content:center;gap:10px;border-bottom:2px solid #0c347d;padding-bottom:10px;margin-bottom:10px;}.qr-card-header img{height:42px;}.qr-puesto-big{display:inline-block;background:#0c347d;color:#fff;font-size:18px;font-weight:700;padding:6px 18px;border-radius:20px;margin:6px 0 10px;}.qr-profile-row{display:flex;align-items:center;justify-content:center;gap:14px;margin:10px 0;}.qr-person-photo-wrap{width:112px;height:132px;border-radius:12px;border:2px solid #0c347d;background:#eef4fc;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0;}.qr-person-photo-wrap img{width:100%;height:100%;object-fit:cover;display:block;}.qr-meta-list{text-align:left;font-size:12px;line-height:1.5;background:#f8fafc;border:1px solid #dce4f0;border-radius:8px;padding:10px;margin-top:10px;}</style></head><body>' + htmlCopy + '<script>window.onload=function(){window.print();};<\/script></body></html>');
     w.document.close();
   },
 
@@ -3166,20 +3268,27 @@ const App = {
     let cardsHtml = '';
     occupied.forEach(s => {
       const p = this._buildStallQrPayload(s);
+      const photoSrc = this._resolvePhotoSrc(s.record['FOTO DUEÑO']);
+      const photoBox = photoSrc
+        ? '<img src="' + this.esc(photoSrc) + '" style="width:76px;height:92px;object-fit:cover;border-radius:8px;border:1.5px solid #0c347d;">'
+        : '<div style="width:76px;height:92px;border-radius:8px;border:1.5px solid #0c347d;background:#eef4fc;display:flex;align-items:center;justify-content:center;font-size:10px;color:#0c347d;">FOTO</div>';
       cardsHtml += '<div class="qr-tile">' +
-        '<div style="font-size:11px;font-weight:700;color:#0c347d;">DEPTO. INSPECTORES COMERCIALES — PEÑAFLOR</div>' +
-        '<div style="font-size:13px;font-weight:700;margin:3px 0;">FERIA ' + this.esc(s.feria) + ' — PUESTO #' + s.puesto + '</div>' +
+        '<div style="font-size:10.5px;font-weight:700;color:#0c347d;">DEPTO. INSPECTORES COMERCIALES — PEÑAFLOR</div>' +
+        '<div style="font-size:12.5px;font-weight:700;margin:3px 0;">FERIA ' + this.esc(s.feria) + ' — PUESTO #' + s.puesto + '</div>' +
+        '<div style="display:flex;align-items:center;justify-content:center;gap:8px;margin:6px 0;">' +
+        photoBox +
         '<div id="qrb_' + s.puesto + '" class="qrb" data-qr="' + this.esc(JSON.stringify(p)) + '"></div>' +
-        '<div style="font-size:11px;text-align:left;margin-top:6px;">' +
+        '</div>' +
+        '<div style="font-size:10.5px;text-align:left;margin-top:4px;">' +
         '<strong>' + this.esc(p.nombre) + '</strong><br>RUT: ' + this.esc(p.rut || '-') + ' | ROL: ' + this.esc(p.rol || '-') + '<br>GPS: ' + this.esc(p.ubicacion || '-') +
         '</div></div>';
     });
     w.document.write('<!DOCTYPE html><html><head><title>Credenciales QR Feria ' + this.esc(this.feriaState.feria) + '</title>' +
       '<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"><\/script>' +
-      '<style>body{font-family:Arial,sans-serif;padding:12px;}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}.qr-tile{border:2px solid #0c347d;border-radius:10px;padding:10px;text-align:center;page-break-inside:avoid;}.qrb{display:flex;justify-content:center;margin:6px 0;}@media print{.no-print{display:none;}}</style></head>' +
+      '<style>body{font-family:Arial,sans-serif;padding:12px;}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}.qr-tile{border:2px solid #0c347d;border-radius:10px;padding:10px;text-align:center;page-break-inside:avoid;}.qrb{display:flex;justify-content:center;}@media print{.no-print{display:none;}}</style></head>' +
       '<body><div class="no-print" style="margin-bottom:12px;"><button onclick="window.print()" style="padding:10px 18px;background:#0c347d;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;">Imprimir ' + occupied.length + ' Credenciales QR</button></div>' +
       '<div class="grid">' + cardsHtml + '</div>' +
-      '<script>window.onload=function(){document.querySelectorAll(".qrb").forEach(function(el){new QRCode(el,{text:el.getAttribute("data-qr"),width:130,height:130,colorDark:"#0c347d",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.M});});};<\/script></body></html>');
+      '<script>window.onload=function(){document.querySelectorAll(".qrb").forEach(function(el){new QRCode(el,{text:el.getAttribute("data-qr"),width:96,height:96,colorDark:"#0c347d",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.M});});};<\/script></body></html>');
     w.document.close();
   },
 
