@@ -182,6 +182,22 @@ const App = {
   // ==========================================================================
   // VISTAS DE MENÚ
   // ==========================================================================
+  _getMenuIconMeta(label) {
+    const u = String(label || '').toUpperCase();
+    if (u.indexOf('FISCALIZ') !== -1) return { icon: 'fact_check', cls: 'ic-blue' };
+    if (u.indexOf('REPORT') !== -1) return { icon: 'assignment_turned_in', cls: 'ic-indigo' };
+    if (u.indexOf('DOCUMENT') !== -1 || u.indexOf('DRIVE') !== -1) return { icon: 'folder_open', cls: 'ic-green' };
+    if (u.indexOf('MOROS') !== -1 || u.indexOf('PATENT') !== -1) return { icon: 'payments', cls: 'ic-amber' };
+    if (u.indexOf('DASHBOARD') !== -1 || u.indexOf('DHASBOARD') !== -1) return { icon: 'monitoring', cls: 'ic-blue' };
+    if (u.indexOf('UBICAC') !== -1 || u.indexOf('MAP') !== -1) return { icon: 'pin_drop', cls: 'ic-sky' };
+    if (u.indexOf('LISTA') !== -1) return { icon: 'table_view', cls: 'ic-teal' };
+    if (u.indexOf('FERIA') !== -1) return { icon: 'storefront', cls: 'ic-green' };
+    if (u.indexOf('PUBLICIDAD') !== -1 || u.indexOf('GIGANTO') !== -1) return { icon: 'campaign', cls: 'ic-cyan' };
+    if (u.indexOf('HORA') !== -1) return { icon: 'dark_mode', cls: 'ic-indigo' };
+    if (u.indexOf('NAVID') !== -1) return { icon: 'redeem', cls: 'ic-red' };
+    return { icon: 'widgets', cls: 'ic-blue' };
+  },
+
   renderMenuTable(tableName) {
     const rows = (this.boot.navTables && this.boot.navTables[tableName]) || [];
     const schema = this.boot.schemas[tableName] || {};
@@ -193,24 +209,26 @@ const App = {
       html += '<div class="dept-hero">' +
         '<div class="dept-hero-left">' +
         '<img class="dept-hero-logo" src="https://cristophermaciel.github.io/inspector-comercial/assets/logo-penaflor.jpg" onerror="this.src=\'./assets/logo-penaflor.jpg\'" alt="Logo Peñaflor">' +
-        '<div><h2>Departamento de Inspectores Comerciales</h2><p>Dirección de Seguridad Pública — Municipalidad de Peñaflor</p></div>' +
+        '<div><h2>Departamento de Inspectores Comerciales</h2><p>Dirección de Seguridad Pública — Ilustre Municipalidad de Peñaflor</p></div>' +
         '</div>' +
         '<div class="conn-badge ' + (live ? 'live' : 'demo') + '" onclick="App.openTab(\'backup\')">' +
-        (live ? '🟢 Conectado a Excel / Google Sheets en vivo' : '🟡 Modo Local — Clic para conectar Excel en vivo') +
+        '<span class="material-icons" style="font-size:17px;">' + (live ? 'cloud_done' : 'cloud_sync') + '</span>' +
+        (live ? 'Conectado en Vivo a Google Sheets & Drive' : 'Datos Cargados — Conectar Google Sheets') +
         '</div></div>';
     } else {
       html += '<div class="section-header"><h2>' + this.esc(this.currentRoute.title) + '</h2></div>';
     }
 
     if (rows.length > 0) {
-      html += '<div class="gallery-grid" style="margin-bottom:20px;">';
+      html += '<div class="gallery-grid" style="margin-bottom:22px;">';
       rows.forEach(r => {
         const title = r[labelKey] || r['VISTA'] || 'Opción';
         const vista = r['VISTA'] || '';
         const img = r['IMAGEN'] || '';
+        const meta = this._getMenuIconMeta(title + ' ' + vista);
         const imgHtml = img && String(img).startsWith('http')
           ? '<img class="card-thumb" src="' + this.esc(img) + '" alt="">'
-          : '<div class="card-icon"><span class="material-icons">dashboard_customize</span></div>';
+          : '<div class="card-icon ' + meta.cls + '"><span class="material-icons">' + meta.icon + '</span></div>';
 
         html += '<div class="menu-card" onclick="App.openAppSheetViewName(\'' + this.escJs(vista) + '\')">' +
           imgHtml + '<div class="card-title">' + this.esc(title) + '</div></div>';
@@ -228,27 +246,28 @@ const App = {
 
   _buildQuickCardsHtml() {
     const quick = [
-      { title: 'Fis. Comercial', icon: 'store', route: { kind: 'form', table: 'COMERCIO', title: 'Fiscalización Comercial' } },
-      { title: 'Fis. Fuera de Horario', icon: 'schedule', route: { kind: 'form', table: 'FUERA DE HORA', title: 'Fiscalización Fuera de Horario' } },
-      { title: 'Fis. Publicidad', icon: 'campaign', route: { kind: 'form', table: 'GIGANTOGRAFIA', title: 'Fiscalización Publicidad' } },
-      { title: 'Patentes en Mora', icon: 'payments', route: { kind: 'form', table: 'PATENTES EN MORA', title: 'Patentes en Mora' } },
-      { title: 'Reporte a Jefatura', icon: 'assignment', route: { kind: 'form', table: 'REPORTE', title: 'Reporte a Jefatura' } },
-      { title: 'Registro Feria Libre', icon: 'storefront', route: { kind: 'form', table: 'ASISTENCIA', title: 'Registro Feria Libre' } },
-      { title: 'Asistencia Ferias (1-100 + QR)', icon: 'qr_code_scanner', route: { kind: 'feriasHub', title: 'Asistencia Ferias Libres (1-100 + QR)' } },
-      { title: 'Semana Peñaflorina', icon: 'festival', route: { kind: 'form', table: 'SEMANA PEÑAFLORINA', title: 'Semana Peñaflorina' } },
-      { title: 'Ferias Navideñas', icon: 'card_giftcard', route: { kind: 'form', table: 'FERIAS NAVIDEÑAS', title: 'Ferias Navideñas' } },
-      { title: 'Notif. por Deudas', icon: 'notifications_active', route: { kind: 'table', table: 'Hoja 1', title: 'Notificaciones por Deudas' } },
-      { title: 'Mapa Fiscalizaciones', icon: 'map', route: { kind: 'map', table: 'COMERCIO', title: 'Mapa de Fiscalizaciones' } },
-      { title: 'Estadísticas / Dashboard', icon: 'bar_chart', route: { kind: 'dashboard', title: 'Estadísticas y Dashboard' } },
-      { title: 'Documentos Drive', icon: 'folder_shared', route: { kind: 'links', table: 'DOCUMENTOS', title: 'Documentos Drive' } },
-      { title: 'Excel y Drive', icon: 'cloud_sync', route: { kind: 'backup', title: 'Excel, Drive y Conexión en Vivo' } }
+      { title: 'Fis. Comercial', sub: 'Comercio establecido', icon: 'storefront', cls: 'ic-blue', route: { kind: 'form', table: 'COMERCIO', title: 'Fiscalización Comercial' } },
+      { title: 'Fis. Fuera de Horario', sub: 'Control nocturno', icon: 'dark_mode', cls: 'ic-indigo', route: { kind: 'form', table: 'FUERA DE HORA', title: 'Fiscalización Fuera de Horario' } },
+      { title: 'Fis. Publicidad', sub: 'Gigantografías', icon: 'campaign', cls: 'ic-cyan', route: { kind: 'form', table: 'GIGANTOGRAFIA', title: 'Fiscalización Publicidad' } },
+      { title: 'Patentes en Mora', sub: 'Cobro y seguimiento', icon: 'payments', cls: 'ic-amber', route: { kind: 'form', table: 'PATENTES EN MORA', title: 'Patentes en Mora' } },
+      { title: 'Reporte a Jefatura', sub: 'Informes y PDF', icon: 'assignment_turned_in', cls: 'ic-blue', route: { kind: 'form', table: 'REPORTE', title: 'Reporte a Jefatura' } },
+      { title: 'Registro Feria Libre', sub: 'Padrón feriantes', icon: 'local_mall', cls: 'ic-green', route: { kind: 'form', table: 'ASISTENCIA', title: 'Registro Feria Libre' } },
+      { title: 'Asistencia Ferias QR', sub: 'Puestos 1 al 100', icon: 'qr_code_scanner', cls: 'ic-teal', route: { kind: 'feriasHub', title: 'Asistencia Ferias Libres (1-100 + QR)' } },
+      { title: 'Semana Peñaflorina', sub: 'Control evento', icon: 'celebration', cls: 'ic-purple', route: { kind: 'form', table: 'SEMANA PEÑAFLORINA', title: 'Semana Peñaflorina' } },
+      { title: 'Ferias Navideñas', sub: 'Control navideño', icon: 'redeem', cls: 'ic-red', route: { kind: 'form', table: 'FERIAS NAVIDEÑAS', title: 'Ferias Navideñas' } },
+      { title: 'Notif. por Deudas', sub: 'Plazos y vencimientos', icon: 'notifications_active', cls: 'ic-rose', route: { kind: 'table', table: 'Hoja 1', title: 'Notificaciones por Deudas' } },
+      { title: 'Mapa Fiscalizaciones', sub: 'Geolocalización GPS', icon: 'pin_drop', cls: 'ic-sky', route: { kind: 'map', table: 'COMERCIO', title: 'Mapa de Fiscalizaciones' } },
+      { title: 'Estadísticas / Dashboard', sub: 'KPIs y gráficos', icon: 'monitoring', cls: 'ic-blue', route: { kind: 'dashboard', title: 'Estadísticas y Dashboard' } },
+      { title: 'Documentos Drive', sub: 'Carpetas oficiales', icon: 'folder_open', cls: 'ic-green', route: { kind: 'links', table: 'DOCUMENTOS', title: 'Documentos Drive' } },
+      { title: 'Excel y Drive', sub: 'Respaldo .xlsx y API', icon: 'cloud_sync', cls: 'ic-teal', route: { kind: 'backup', title: 'Excel, Drive y Conexión en Vivo' } }
     ];
 
     let html = '<div class="gallery-grid">';
     quick.forEach(q => {
       html += '<div class="menu-card" onclick=\'App.navigate(' + JSON.stringify(q.route) + ')\'>' +
-        '<div class="card-icon"><span class="material-icons">' + q.icon + '</span></div>' +
+        '<div class="card-icon ' + q.cls + '"><span class="material-icons">' + q.icon + '</span></div>' +
         '<div class="card-title">' + this.esc(q.title) + '</div>' +
+        '<div class="card-sub">' + this.esc(q.sub) + '</div>' +
         '</div>';
     });
     html += '</div>';
