@@ -2,27 +2,37 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>INSPECTOR COMERCIAL</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, viewport-fit=cover">
+  <meta name="theme-color" content="#0c347d">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Inspectores Peñaflor">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="icon" type="image/jpeg" href="./assets/logo-penaflor.jpg">
+  <link rel="apple-touch-icon" href="./assets/logo-penaflor.jpg">
+  <title>Departamento de Inspectores Comerciales - Peñaflor</title>
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <style>
   :root {
-    --primary: #0b7bde;
-    --primary-dark: #085ea8;
-    --primary-light: #e8f3fd;
-    --bg: #f3f6fa;
+    --primary: #0c347d;
+    --primary-dark: #072255;
+    --accent: #0b7bde;
+    --primary-light: #e8f1fc;
+    --bg: #f2f5fa;
     --surface: #ffffff;
-    --text: #1d2939;
+    --text: #101828;
     --muted: #667085;
-    --border: #e2e8f0;
+    --border: #dce4f0;
     --success: #12b76a;
     --warning: #f79009;
     --danger: #f04438;
     --radius: 12px;
-    --shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
+    --shadow: 0 2px 10px rgba(12, 52, 125, 0.07);
   }
 
   * { box-sizing: border-box; }
@@ -32,21 +42,37 @@
     background: var(--bg);
     color: var(--text);
     font-size: 15px;
-    padding-bottom: 72px;
+    padding-bottom: 74px;
   }
 
-  /* HEADER */
+  /* HEADER INSTITUCIONAL */
   .topbar {
     position: sticky;
     top: 0;
-    z-index: 100;
-    background: var(--primary);
+    z-index: 120;
+    background: linear-gradient(90deg, var(--primary) 0%, #1248a0 100%);
     color: #fff;
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 12px 16px;
-    box-shadow: 0 2px 8px rgba(11, 123, 222, 0.25);
+    padding: 8px 14px;
+    box-shadow: 0 2px 10px rgba(12, 52, 125, 0.28);
+  }
+  .topbar-logo-wrap {
+    background: #fff;
+    border-radius: 8px;
+    padding: 3px 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+  }
+  .topbar-logo {
+    height: 36px;
+    width: auto;
+    display: block;
+    object-fit: contain;
   }
   .topbar-title {
     flex: 1;
@@ -54,16 +80,20 @@
   }
   .topbar-title h1 {
     margin: 0;
-    font-size: 17px;
-    font-weight: 600;
+    font-size: 15px;
+    font-weight: 700;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    letter-spacing: 0.2px;
   }
   .topbar-title small {
     display: block;
     font-size: 11px;
-    opacity: 0.88;
+    opacity: 0.9;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .icon-btn {
     background: rgba(255, 255, 255, 0.16);
@@ -77,24 +107,119 @@
     justify-content: center;
     cursor: pointer;
     transition: background 0.15s;
+    flex-shrink: 0;
   }
   .icon-btn:hover { background: rgba(255, 255, 255, 0.28); }
   .icon-btn.hidden { display: none; }
 
+  .install-pill {
+    background: #fff;
+    color: var(--primary);
+    border: none;
+    border-radius: 20px;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.16);
+    flex-shrink: 0;
+  }
+  .install-pill:hover { background: var(--primary-light); }
+  .install-pill .material-icons { font-size: 16px; }
+
+  /* HERO BANNER INSTITUCIONAL */
+  .dept-hero {
+    background: linear-gradient(135deg, #ffffff 0%, #eef4fc 100%);
+    border: 1px solid var(--border);
+    border-left: 5px solid var(--primary);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+    margin-bottom: 18px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    box-shadow: var(--shadow);
+  }
+  .dept-hero-left {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-width: 240px;
+  }
+  .dept-hero-logo {
+    height: 58px;
+    width: auto;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: #fff;
+    padding: 3px;
+  }
+  .dept-hero h2 {
+    margin: 0;
+    font-size: 18px;
+    color: var(--primary);
+    font-weight: 700;
+  }
+  .dept-hero p {
+    margin: 3px 0 0;
+    font-size: 12.5px;
+    color: var(--muted);
+  }
+  .conn-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .conn-badge.live { background: #ecfdf3; color: #027a48; border: 1px solid #a6f4c5; }
+  .conn-badge.demo { background: #fffaeb; color: #b54708; border: 1px solid #fedf89; }
+
   /* LAYOUT DESKTOP + MOBILE */
   .app-shell {
     display: flex;
-    max-width: 1440px;
+    max-width: 1480px;
     margin: 0 auto;
-    min-height: calc(100vh - 64px);
+    min-height: calc(100vh - 58px);
   }
   .sidebar {
     display: none;
-    width: 248px;
+    width: 266px;
     flex-shrink: 0;
     background: var(--surface);
     border-right: 1px solid var(--border);
-    padding: 14px 10px;
+    padding: 14px 12px;
+  }
+  .sidebar-brand {
+    text-align: center;
+    padding: 10px 8px 14px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 12px;
+  }
+  .sidebar-brand img {
+    max-width: 100%;
+    height: 62px;
+    object-fit: contain;
+    margin-bottom: 6px;
+  }
+  .sidebar-brand .dept-name {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--primary);
+    line-height: 1.25;
+  }
+  .sidebar-brand .dept-sub {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 2px;
   }
   .sidebar-item {
     display: flex;
@@ -116,7 +241,7 @@
   .sidebar-item.active {
     background: var(--primary-light);
     color: var(--primary);
-    font-weight: 600;
+    font-weight: 700;
   }
   .sidebar-divider {
     height: 1px;
@@ -133,7 +258,7 @@
   .main-content {
     flex: 1;
     min-width: 0;
-    padding: 16px;
+    padding: 14px;
   }
 
   /* BOTTOM NAV (MOBILE) */
@@ -142,13 +267,13 @@
     bottom: 0;
     left: 0;
     right: 0;
-    z-index: 100;
+    z-index: 120;
     background: var(--surface);
     border-top: 1px solid var(--border);
     display: flex;
     justify-content: space-around;
     padding: 6px 4px;
-    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
+    box-shadow: 0 -2px 10px rgba(12, 52, 125, 0.08);
   }
   .nav-btn {
     flex: 1;
@@ -164,21 +289,22 @@
     padding: 4px 2px;
     cursor: pointer;
   }
-  .nav-btn.active { color: var(--primary); font-weight: 600; }
+  .nav-btn.active { color: var(--primary); font-weight: 700; }
   .nav-btn .material-icons { font-size: 22px; }
 
-  @media (min-width: 900px) {
+  @media (min-width: 920px) {
     body { padding-bottom: 0; }
     .sidebar { display: block; }
     .bottom-nav { display: none; }
-    .main-content { padding: 24px 28px; }
+    .main-content { padding: 22px 28px; }
+    .topbar-title h1 { font-size: 17px; }
   }
 
   /* GALLERY MENU CARDS */
   .gallery-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(158px, 1fr));
-    gap: 14px;
+    grid-template-columns: repeat(auto-fill, minmax(156px, 1fr));
+    gap: 13px;
   }
   .menu-card {
     background: var(--surface);
@@ -194,12 +320,12 @@
     align-items: center;
     justify-content: center;
     gap: 10px;
-    min-height: 132px;
+    min-height: 130px;
   }
   .menu-card:hover {
     transform: translateY(-2px);
     border-color: var(--primary);
-    box-shadow: 0 6px 18px rgba(11, 123, 222, 0.14);
+    box-shadow: 0 6px 18px rgba(12, 52, 125, 0.14);
   }
   .menu-card .card-icon {
     width: 52px;
@@ -233,12 +359,13 @@
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    margin-bottom: 16px;
+    margin-bottom: 14px;
   }
   .section-header h2 {
     margin: 0;
-    font-size: 20px;
-    font-weight: 600;
+    font-size: 19px;
+    font-weight: 700;
+    color: var(--primary);
   }
   .card {
     background: var(--surface);
@@ -259,7 +386,7 @@
     border-radius: 8px;
     padding: 10px 16px;
     font-size: 14px;
-    font-weight: 500;
+    font-weight: 600;
     cursor: pointer;
     text-decoration: none;
     transition: background 0.15s, opacity 0.15s;
@@ -271,7 +398,7 @@
   .btn-outline:hover { background: var(--bg); }
   .btn-success { background: var(--success); color: #fff; }
   .btn-danger { background: var(--danger); color: #fff; }
-  .btn-sm { padding: 6px 10px; font-size: 12px; border-radius: 6px; }
+  .btn-sm { padding: 6px 11px; font-size: 12px; border-radius: 7px; }
 
   /* FORMS */
   .form-grid {
@@ -286,7 +413,7 @@
   .form-field label {
     display: block;
     font-size: 12px;
-    font-weight: 600;
+    font-weight: 700;
     color: #344054;
     margin-bottom: 6px;
     text-transform: uppercase;
@@ -305,31 +432,126 @@
   .form-control:focus {
     outline: none;
     border-color: var(--primary);
-    box-shadow: 0 0 0 3px rgba(11, 123, 222, 0.14);
+    box-shadow: 0 0 0 3px rgba(12, 52, 125, 0.14);
   }
   textarea.form-control { min-height: 84px; resize: vertical; }
 
-  /* CHIPS (ENUMLIST) */
-  .chip-group {
+  /* DESPLEGABLE CON SELECCIÓN MÚLTIPLE (MULTI-SELECT DROPDOWN) */
+  .ms-dropdown {
+    position: relative;
+    width: 100%;
+  }
+  .ms-trigger {
+    width: 100%;
+    min-height: 42px;
+    padding: 6px 36px 6px 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: #fff;
+    cursor: pointer;
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
+    align-items: center;
+    gap: 5px;
+    position: relative;
+    transition: border-color 0.15s;
   }
-  .chip {
-    padding: 7px 12px;
-    border-radius: 20px;
-    border: 1px solid #cbd5e1;
-    background: #fff;
-    font-size: 13px;
-    cursor: pointer;
-    user-select: none;
-    transition: all 0.12s;
-  }
-  .chip.selected {
-    background: var(--primary);
+  .ms-trigger:hover, .ms-dropdown.open .ms-trigger {
     border-color: var(--primary);
-    color: #fff;
-    font-weight: 500;
+    box-shadow: 0 0 0 3px rgba(12, 52, 125, 0.12);
+  }
+  .ms-placeholder {
+    color: #98a2b3;
+    font-size: 14px;
+    padding: 2px;
+  }
+  .ms-arrow {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--muted);
+    pointer-events: none;
+    transition: transform 0.15s;
+  }
+  .ms-dropdown.open .ms-arrow { transform: translateY(-50%) rotate(180deg); color: var(--primary); }
+  .ms-tag {
+    background: var(--primary-light);
+    color: var(--primary);
+    border: 1px solid #bfd7f8;
+    border-radius: 16px;
+    padding: 3px 9px;
+    font-size: 12px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .ms-tag-x {
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+    font-weight: 700;
+  }
+  .ms-panel {
+    display: none;
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(100% + 4px);
+    z-index: 90;
+    background: #fff;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.16);
+    padding: 8px;
+  }
+  .ms-dropdown.open .ms-panel { display: block; }
+  .ms-search {
+    width: 100%;
+    padding: 7px 10px;
+    border: 1px solid #dce4f0;
+    border-radius: 6px;
+    font-size: 13px;
+    margin-bottom: 6px;
+  }
+  .ms-actions {
+    display: flex;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 4px 2px 6px;
+    border-bottom: 1px solid #f1f5f9;
+    margin-bottom: 4px;
+  }
+  .ms-actions button {
+    border: none;
+    background: none;
+    color: var(--accent);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 2px 4px;
+  }
+  .ms-options {
+    max-height: 220px;
+    overflow-y: auto;
+  }
+  .ms-opt {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 8px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13.5px;
+    user-select: none;
+  }
+  .ms-opt:hover { background: var(--primary-light); }
+  .ms-opt input[type="checkbox"] {
+    width: 17px;
+    height: 17px;
+    accent-color: var(--primary);
+    cursor: pointer;
   }
 
   /* MEDIA & SIGNATURE */
@@ -356,10 +578,7 @@
     touch-action: none;
     cursor: crosshair;
   }
-  .loc-row {
-    display: flex;
-    gap: 8px;
-  }
+  .loc-row { display: flex; gap: 8px; }
 
   /* TABLES */
   .toolbar {
@@ -369,10 +588,7 @@
     margin-bottom: 14px;
     align-items: center;
   }
-  .search-input {
-    flex: 1;
-    min-width: 210px;
-  }
+  .search-input { flex: 1; min-width: 210px; }
   .table-wrap {
     overflow-x: auto;
     background: var(--surface);
@@ -386,9 +602,9 @@
     font-size: 13px;
   }
   table.data-table th {
-    background: #f8fafc;
-    color: #475467;
-    font-weight: 600;
+    background: #f4f7fc;
+    color: var(--primary);
+    font-weight: 700;
     text-align: left;
     padding: 11px 12px;
     border-bottom: 1px solid var(--border);
@@ -406,7 +622,7 @@
     padding: 3px 9px;
     border-radius: 12px;
     font-size: 11px;
-    font-weight: 600;
+    font-weight: 700;
   }
   .badge-blue { background: var(--primary-light); color: var(--primary); }
   .badge-green { background: #ecfdf3; color: #027a48; }
@@ -423,11 +639,12 @@
   .kpi-card {
     background: var(--surface);
     border: 1px solid var(--border);
+    border-top: 3px solid var(--primary);
     border-radius: var(--radius);
     padding: 14px 16px;
     box-shadow: var(--shadow);
   }
-  .kpi-card .kpi-label { font-size: 12px; color: var(--muted); font-weight: 500; }
+  .kpi-card .kpi-label { font-size: 12px; color: var(--muted); font-weight: 600; }
   .kpi-card .kpi-value { font-size: 24px; font-weight: 700; color: var(--primary); margin-top: 4px; }
 
   .charts-grid {
@@ -448,8 +665,8 @@
   .chart-card h3 {
     margin: 0 0 12px 0;
     font-size: 14px;
-    font-weight: 600;
-    color: var(--text);
+    font-weight: 700;
+    color: var(--primary);
   }
   .chart-box { position: relative; height: 260px; }
 
@@ -466,7 +683,7 @@
   .modal-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(15, 23, 42, 0.55);
+    background: rgba(12, 27, 60, 0.58);
     z-index: 200;
     display: none;
     align-items: center;
@@ -482,7 +699,7 @@
     max-height: 88vh;
     overflow-y: auto;
     padding: 20px;
-    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.28);
   }
   .detail-row {
     display: flex;
@@ -498,7 +715,7 @@
   .loader-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(255, 255, 255, 0.8);
+    background: rgba(255, 255, 255, 0.85);
     z-index: 300;
     display: none;
     flex-direction: column;
@@ -522,14 +739,14 @@
     bottom: 84px;
     right: 20px;
     z-index: 400;
-    background: #1d2939;
+    background: var(--primary-dark);
     color: #fff;
     padding: 12px 18px;
     border-radius: 10px;
     font-size: 13px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
     display: none;
-    max-width: 360px;
+    max-width: 380px;
   }
   .toast.show { display: block; }
 </style>
@@ -537,15 +754,22 @@
 </head>
 <body>
 
-  <!-- BARRA SUPERIOR -->
+  <!-- BARRA SUPERIOR INSTITUCIONAL -->
   <header class="topbar">
     <button id="btnBack" class="icon-btn hidden" onclick="App.goBack()" title="Volver">
       <span class="material-icons">arrow_back</span>
     </button>
-    <div class="topbar-title">
-      <h1 id="headerTitle">INSPECTOR COMERCIAL</h1>
-      <small id="headerSubtitle">Dirección Seguridad Pública Peñaflor</small>
+    <div class="topbar-logo-wrap">
+      <img class="topbar-logo" src="https://cristophermaciel.github.io/inspector-comercial/assets/logo-penaflor.jpg" onerror="this.src='./assets/logo-penaflor.jpg'" alt="Logo Peñaflor">
     </div>
+    <div class="topbar-title">
+      <h1 id="headerTitle">Departamento de Inspectores Comerciales</h1>
+      <small id="headerSubtitle">Seguridad Pública Municipalidad de Peñaflor</small>
+    </div>
+    <button id="btnInstallApp" class="install-pill" onclick="App.promptInstall()" title="Instalar en celular o escritorio">
+      <span class="material-icons">install_mobile</span>
+      <span class="install-label">Instalar</span>
+    </button>
     <button class="icon-btn" onclick="App.refreshCurrent()" title="Sincronizar">
       <span class="material-icons">sync</span>
     </button>
@@ -555,6 +779,12 @@
   <div class="app-shell">
     <!-- BARRA LATERAL DESKTOP -->
     <aside class="sidebar">
+      <div class="sidebar-brand">
+        <img src="https://cristophermaciel.github.io/inspector-comercial/assets/logo-penaflor.jpg" onerror="this.src='./assets/logo-penaflor.jpg'" alt="Peñaflor Inspecciones Comerciales">
+        <div class="dept-name">Departamento de Inspectores Comerciales</div>
+        <div class="dept-sub">Dirección de Seguridad Pública</div>
+      </div>
+
       <button class="sidebar-item active" data-tab="menu" onclick="App.openTab('menu')">
         <span class="material-icons">apps</span> Menú Principal
       </button>
@@ -562,21 +792,21 @@
         <span class="material-icons">edit_note</span> Formularios
       </button>
       <button class="sidebar-item" data-tab="tables" onclick="App.openTab('tables')">
-        <span class="material-icons">table_rows</span> Listados y Registros
+        <span class="material-icons">table_rows</span> Listados y Excel
       </button>
       <button class="sidebar-item" data-tab="map" onclick="App.openTab('map')">
         <span class="material-icons">map</span> Mapa Fiscalizaciones
       </button>
       <button class="sidebar-item" data-tab="dashboard" onclick="App.openTab('dashboard')">
-        <span class="material-icons">bar_chart</span> Dashboard
+        <span class="material-icons">bar_chart</span> Estadísticas / Dashboard
       </button>
       <div class="sidebar-divider"></div>
       <button class="sidebar-item" data-tab="backup" onclick="App.openTab('backup')">
-        <span class="material-icons">cloud_download</span> Respaldo Excel y Drive
+        <span class="material-icons">cloud_sync</span> Excel, Drive y Conexión
       </button>
       <div class="sidebar-divider"></div>
       <div class="sidebar-footer">
-        <div id="userEmailLabel">Conectando...</div>
+        <div id="userEmailLabel" style="font-weight:600;color:#0c347d;">Conectando...</div>
         <div>CREADOR CRISTOPHER MACIEL</div>
         <div>CONTACTO 1410</div>
       </div>
@@ -585,7 +815,7 @@
     <!-- ÁREA DE CONTENIDO DINÁMICO -->
     <main class="main-content" id="appView">
       <div class="card" style="text-align:center;padding:40px;">
-        Cargando Inspector Comercial...
+        Cargando Departamento de Inspectores Comerciales...
       </div>
     </main>
   </div>
@@ -602,18 +832,18 @@
       <span class="material-icons">table_rows</span>Listados
     </button>
     <button class="nav-btn" data-tab="dashboard" onclick="App.openTab('dashboard')">
-      <span class="material-icons">bar_chart</span>Dashboard
+      <span class="material-icons">bar_chart</span>Estadísticas
     </button>
     <button class="nav-btn" data-tab="backup" onclick="App.openTab('backup')">
-      <span class="material-icons">cloud_download</span>Respaldo
+      <span class="material-icons">cloud_sync</span>Excel/Drive
     </button>
   </nav>
 
-  <!-- MODAL DETALLE DE REGISTRO -->
+  <!-- MODAL DETALLE DE REGISTRO / INSTALACIÓN -->
   <div id="detailModal" class="modal-backdrop" onclick="if(event.target===this)App.closeModal()">
     <div class="modal-dialog">
       <div class="section-header" style="margin-bottom:10px;">
-        <h2 id="modalTitle" style="font-size:17px;">Detalle del Registro</h2>
+        <h2 id="modalTitle" style="font-size:17px;">Detalle</h2>
         <button class="btn btn-outline btn-sm" onclick="App.closeModal()">Cerrar</button>
       </div>
       <div id="modalBody"></div>
@@ -623,7 +853,7 @@
   <!-- LOADER GLOBAL -->
   <div id="globalLoader" class="loader-overlay">
     <div class="spinner"></div>
-    <div id="loaderText" style="font-weight:500;color:#0b7bde;">Procesando...</div>
+    <div id="loaderText" style="font-weight:600;color:#0c347d;">Procesando...</div>
   </div>
 
   <!-- NOTIFICACIÓN TOAST -->
@@ -632,9 +862,11 @@
   
 <script>
 // ============================================================================
-// ADAPTADOR DE VISTA PREVIA PARA GITHUB PAGES (solo activo fuera de Apps Script)
+// ADAPTADOR PWA (GITHUB PAGES) -> CONECTA EN VIVO A GOOGLE APPS SCRIPT
+// SI HAY URL CONFIGURADA, O USA MODO LOCAL DE VISTA PREVIA SI AÚN NO SE CONECTA
 // ============================================================================
 if (typeof google === 'undefined' || !google.script) {
+  window.__IS_PREVIEW_SHIM__ = true;
   (function() {
     /**
  * ============================================================================
@@ -645,11 +877,14 @@ if (typeof google === 'undefined' || !google.script) {
  */
 
 var APP_CONFIG = {
-  APP_NAME: 'INSPECTOR COMERCIAL',
-  SUBTITLE: 'Dirección Seguridad Pública Peñaflor',
+  APP_NAME: 'Departamento de Inspectores Comerciales',
+  SHORT_NAME: 'INSPECTOR COMERCIAL',
+  SUBTITLE: 'Seguridad Pública Municipalidad de Peñaflor',
   CREATOR: 'CREADOR CRISTOPHER MACIEL',
   CONTACT: 'CONTACTO 1410',
-  PRIMARY_COLOR: '#0b7bde',
+  PRIMARY_COLOR: '#0c347d',
+  ACCENT_COLOR: '#0b7bde',
+  LOGO_URL: 'https://cristophermaciel.github.io/inspector-comercial/assets/logo-penaflor.jpg',
   TIMEZONE: 'America/Santiago',
 
   // Hojas de cálculo originales de AppSheet
@@ -1080,7 +1315,26 @@ var APPSHEET_VIEW_MAP = {
 };
 
 
-    var STORAGE_KEY = 'inspector_comercial_preview_v1';
+    // Si el usuario guardó la URL de su Web App de Google Apps Script, conectar EN VIVO
+    var LIVE_API_URL = (localStorage.getItem('INSPECTOR_GAS_API_URL') || '').trim();
+    window.__GAS_LIVE_CONNECTED__ = Boolean(LIVE_API_URL);
+
+    function callLiveGas(action, payload) {
+      var isRead = (action === 'bootstrap' || action === 'rows' || action === 'dashboard' || action === 'map' || action === 'listExcelBackups');
+      if (isRead) {
+        var qs = '?action=' + encodeURIComponent(action);
+        if (payload && payload.table) qs += '&table=' + encodeURIComponent(payload.table);
+        return fetch(LIVE_API_URL + qs, { method: 'GET' }).then(function(r) { return r.json(); });
+      }
+      // Usar text/plain para evitar preflight CORS en Apps Script Web Apps
+      return fetch(LIVE_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(Object.assign({ action: action }, payload || {}))
+      }).then(function(r) { return r.json(); });
+    }
+
+    var STORAGE_KEY = 'inspector_comercial_preview_v2';
     var defaultDb = {
       'FUNCIONARIO': [
         { _RowNumber: 2, ID: 'F01', NOMBRE: 'CRISTOPHER MACIEL', ROL: 'Administrador / Inspector' },
@@ -1137,19 +1391,13 @@ var APPSHEET_VIEW_MAP = {
         var db = loadDb();
         return {
           authorized: true,
-          user: { email: 'cristopher.maciel@penaflor.cl (Vista Previa GitHub)', isAuthorized: true },
-          config: { appName: APP_CONFIG.APP_NAME, subtitle: APP_CONFIG.SUBTITLE + ' (Demo GitHub)', creator: APP_CONFIG.CREATOR, contact: APP_CONFIG.CONTACT, primaryColor: APP_CONFIG.PRIMARY_COLOR },
+          user: { email: 'cristopher.maciel@penaflor.cl (Vista Previa)', isAuthorized: true },
+          config: { appName: APP_CONFIG.APP_NAME, subtitle: APP_CONFIG.SUBTITLE, creator: APP_CONFIG.CREATOR, contact: APP_CONFIG.CONTACT, primaryColor: APP_CONFIG.PRIMARY_COLOR },
           schemas: TABLE_SCHEMAS,
           viewMap: APPSHEET_VIEW_MAP,
           funcionarios: db.FUNCIONARIO.map(function(f){ return { id: f.ID, nombre: f.NOMBRE, rol: f.ROL, imagen: f.IMAGEN || '' }; }),
           navTables: { MENU: [], SUBMENU: [], 'SUBMENU 2': [], 'SUBMENU 3': [], LISTADOS: [], 'FERIAS LIBRES': [], DOCUMENTOS: db.DOCUMENTOS },
-          driveFolders: {
-            root: { url: 'https://drive.google.com' },
-            fotos: { url: 'https://drive.google.com' },
-            firmas: { url: 'https://drive.google.com' },
-            pdfs: { url: 'https://drive.google.com' },
-            excel: { url: 'https://drive.google.com' }
-          },
+          driveFolders: { root: { url: 'https://drive.google.com' }, fotos: { url: 'https://drive.google.com' }, firmas: { url: 'https://drive.google.com' }, pdfs: { url: 'https://drive.google.com' }, excel: { url: 'https://drive.google.com' } },
           dailyBackupEnabled: true
         };
       },
@@ -1173,7 +1421,7 @@ var APPSHEET_VIEW_MAP = {
           if (idx !== -1) db[tableName][idx] = Object.assign({}, db[tableName][idx], recordData);
         } else {
           recordData._RowNumber = db[tableName].length + 2;
-          if (!recordData.ID) recordData.ID = 'DEMO-' + Math.random().toString(36).slice(2, 7).toUpperCase();
+          if (!recordData.ID) recordData.ID = 'REG-' + Math.random().toString(36).slice(2, 7).toUpperCase();
           if (!recordData['FECHA HORA']) recordData['FECHA HORA'] = new Date().toLocaleString('es-CL');
           db[tableName].unshift(recordData);
         }
@@ -1186,9 +1434,7 @@ var APPSHEET_VIEW_MAP = {
         saveDb(db);
         return { ok: true };
       },
-      apiRegeneratePdf: function() {
-        return { ok: true, pdf: { url: 'https://drive.google.com' } };
-      },
+      apiRegeneratePdf: function() { return { ok: true, pdf: { url: 'https://drive.google.com' } }; },
       apiGetDashboardStats: function() {
         var db = loadDb();
         var countBy = function(arr, col) {
@@ -1233,18 +1479,22 @@ var APPSHEET_VIEW_MAP = {
         });
         return pts;
       },
-      apiRunExcelBackup: function() {
-        return { timestamp: new Date().toLocaleString('es-CL'), files: [{ ok: true, name: 'INSPECTOR_COMERCIAL_DEMO.xlsx' }, { ok: true, name: 'NOTIFICACIONES_DEUDAS_DEMO.xlsx' }] };
-      },
-      apiListExcelBackups: function() {
-        return [
-          { name: 'INSPECTOR_COMERCIAL_2026-11-19_1300.xlsx', date: '19/11/2026 13:00', sizeKb: 148, downloadUrl: '#' },
-          { name: 'NOTIFICACIONES_DEUDAS_2026-11-19_1300.xlsx', date: '19/11/2026 13:00', sizeKb: 42, downloadUrl: '#' }
-        ];
-      },
-      apiToggleDailyBackup: function(enable) {
-        return { ok: true, message: enable ? 'Respaldo diario activado (23:00 hrs).' : 'Respaldo diario desactivado.' };
-      }
+      apiRunExcelBackup: function() { return { timestamp: new Date().toLocaleString('es-CL'), files: [{ ok: true, name: 'INSPECTOR_COMERCIAL_DEMO.xlsx' }, { ok: true, name: 'NOTIFICACIONES_DEUDAS_DEMO.xlsx' }] }; },
+      apiListExcelBackups: function() { return []; },
+      apiToggleDailyBackup: function(enable) { return { ok: true, message: enable ? 'Respaldo diario activado (23:00 hrs).' : 'Respaldo diario desactivado.' }; }
+    };
+
+    var LIVE_MAP = {
+      apiGetBootstrap: function() { return callLiveGas('bootstrap'); },
+      apiGetTableRows: function(table) { return callLiveGas('rows', { table: table }); },
+      apiSaveRecord: function(table, record, mediaUploads) { return callLiveGas('saveRecord', { table: table, record: record, mediaUploads: mediaUploads }); },
+      apiDeleteRecord: function(table, rowNumber) { return callLiveGas('deleteRecord', { table: table, rowNumber: rowNumber }); },
+      apiRegeneratePdf: function(table, rowNumber) { return callLiveGas('regeneratePdf', { table: table, rowNumber: rowNumber }); },
+      apiGetDashboardStats: function() { return callLiveGas('dashboard'); },
+      apiGetMapPoints: function(table) { return callLiveGas('map', { table: table }); },
+      apiRunExcelBackup: function() { return callLiveGas('runExcelBackup'); },
+      apiListExcelBackups: function() { return callLiveGas('listExcelBackups'); },
+      apiToggleDailyBackup: function(enable) { return callLiveGas('toggleDailyBackup', { enable: enable }); }
     };
 
     function makeRunner(okCb, errCb) {
@@ -1255,14 +1505,20 @@ var APPSHEET_VIEW_MAP = {
       Object.keys(mockServer).forEach(function(fnName) {
         runner[fnName] = function() {
           var args = Array.prototype.slice.call(arguments);
-          setTimeout(function() {
-            try {
-              var res = mockServer[fnName].apply(null, args);
-              if (okCb) okCb(res);
-            } catch (e) {
-              if (errCb) errCb(e);
-            }
-          }, 120);
+          if (LIVE_API_URL && LIVE_MAP[fnName]) {
+            LIVE_MAP[fnName].apply(null, args)
+              .then(function(res) { if (okCb) okCb(res); })
+              .catch(function(err) { if (errCb) errCb(err); });
+          } else {
+            setTimeout(function() {
+              try {
+                var res = mockServer[fnName].apply(null, args);
+                if (okCb) okCb(res);
+              } catch (e) {
+                if (errCb) errCb(e);
+              }
+            }, 90);
+          }
         };
       });
       return runner;
@@ -1276,7 +1532,7 @@ var APPSHEET_VIEW_MAP = {
 <script>
 /**
  * ============================================================================
- * INSPECTOR COMERCIAL - CONTROLADOR FRONTEND SPA
+ * DEPARTAMENTO DE INSPECTORES COMERCIALES - CONTROLADOR FRONTEND SPA + PWA
  * ============================================================================
  */
 const App = {
@@ -1288,9 +1544,18 @@ const App = {
   signaturePads: {},
   chartInstances: [],
   leafletMap: null,
+  deferredInstallPrompt: null,
 
   init() {
-    this.showLoader('Cargando INSPECTOR COMERCIAL...');
+    this.setupPWA();
+    // Cerrar desplegables multi-selección al hacer clic fuera
+    document.addEventListener('click', e => {
+      if (!e.target.closest('.ms-dropdown')) {
+        document.querySelectorAll('.ms-dropdown.open').forEach(el => el.classList.remove('open'));
+      }
+    });
+
+    this.showLoader('Cargando Departamento de Inspectores Comerciales...');
     google.script.run
       .withSuccessHandler(res => {
         this.hideLoader();
@@ -1298,7 +1563,7 @@ const App = {
           document.getElementById('appView').innerHTML =
             '<div class="card"><h2>Acceso restringido</h2><p>Tu cuenta (' +
             this.esc(res && res.user ? res.user.email : '') +
-            ') no está autorizada para usar Inspector Comercial.</p></div>';
+            ') no está autorizada para usar esta aplicación.</p></div>';
           return;
         }
         this.boot = res;
@@ -1313,6 +1578,49 @@ const App = {
   },
 
   // ==========================================================================
+  // PWA INSTALABLE (MÓVIL ANDROID/iOS + ESCRITORIO WINDOWS/MAC)
+  // ==========================================================================
+  setupPWA() {
+    if ('serviceWorker' in navigator && location.protocol === 'https:') {
+      navigator.serviceWorker.register('./sw.js').catch(() => {});
+    }
+    window.addEventListener('beforeinstallprompt', e => {
+      e.preventDefault();
+      this.deferredInstallPrompt = e;
+      const btn = document.getElementById('btnInstallApp');
+      if (btn) btn.style.display = 'inline-flex';
+    });
+    window.addEventListener('appinstalled', () => {
+      this.deferredInstallPrompt = null;
+      this.toast('Aplicación instalada correctamente en tu dispositivo.');
+    });
+  },
+
+  promptInstall() {
+    if (this.deferredInstallPrompt) {
+      this.deferredInstallPrompt.prompt();
+      this.deferredInstallPrompt.userChoice.then(choice => {
+        if (choice.outcome === 'accepted') {
+          this.toast('Instalando Departamento de Inspectores Comerciales...');
+        }
+        this.deferredInstallPrompt = null;
+      });
+      return;
+    }
+
+    // Mostrar guía clara para instalar en iPhone/iPad, Android o Escritorio
+    document.getElementById('modalTitle').textContent = 'Instalar App (Móvil y Escritorio)';
+    document.getElementById('modalBody').innerHTML =
+      '<div style="font-size:14px;line-height:1.6;">' +
+      '<p>Podés instalar <strong>Departamento de Inspectores Comerciales</strong> como aplicación nativa en tu celular o computador:</p>' +
+      '<div class="card" style="margin-bottom:10px;padding:12px;"><strong>📱 Android (Chrome):</strong><br>Tocá el menú <strong>⋮</strong> arriba a la derecha → <strong>"Instalar aplicación"</strong> o <strong>"Agregar a la pantalla principal"</strong>.</div>' +
+      '<div class="card" style="margin-bottom:10px;padding:12px;"><strong>🍎 iPhone / iPad (Safari):</strong><br>Tocá el botón <strong>Compartir</strong> (cuadrado con flecha arriba) → <strong>"Agregar a inicio"</strong>.</div>' +
+      '<div class="card" style="margin-bottom:0;padding:12px;"><strong>💻 Escritorio (Chrome / Edge):</strong><br>Hacé clic en el ícono de <strong>Instalar (monitor con flecha)</strong> en la barra de direcciones arriba a la derecha.</div>' +
+      '</div>';
+    document.getElementById('detailModal').classList.add('open');
+  },
+
+  // ==========================================================================
   // NAVEGACIÓN
   // ==========================================================================
   openTab(tab) {
@@ -1322,17 +1630,17 @@ const App = {
     });
 
     if (tab === 'menu') {
-      this.navigate({ kind: 'menu', table: 'MENU', title: 'Menú Principal' }, false);
+      this.navigate({ kind: 'menu', table: 'MENU', title: 'Departamento de Inspectores Comerciales' }, false);
     } else if (tab === 'forms') {
       this.navigate({ kind: 'formsHub', title: 'Formularios de Fiscalización' }, false);
     } else if (tab === 'tables') {
-      this.navigate({ kind: 'tablesHub', title: 'Listados y Registros' }, false);
+      this.navigate({ kind: 'tablesHub', title: 'Listados y Registros Excel' }, false);
     } else if (tab === 'map') {
-      this.navigate({ kind: 'map', table: 'COMERCIO', title: 'Fiscalizaciones Comerciales (Mapa)' }, false);
+      this.navigate({ kind: 'map', table: 'COMERCIO', title: 'Mapa de Fiscalizaciones' }, false);
     } else if (tab === 'dashboard') {
-      this.navigate({ kind: 'dashboard', title: 'Dashboard Estadístico' }, false);
+      this.navigate({ kind: 'dashboard', title: 'Estadísticas y Dashboard' }, false);
     } else if (tab === 'backup') {
-      this.navigate({ kind: 'backup', title: 'Respaldo Excel y Carpetas Drive' }, false);
+      this.navigate({ kind: 'backup', title: 'Excel, Drive y Conexión en Vivo' }, false);
     }
   },
 
@@ -1341,7 +1649,7 @@ const App = {
       this.history.push(this.currentRoute);
     }
     this.currentRoute = route;
-    document.getElementById('headerTitle').textContent = route.title || this.boot.config.appName;
+    document.getElementById('headerTitle').textContent = route.title || 'Departamento de Inspectores Comerciales';
     document.getElementById('btnBack').classList.toggle('hidden', this.history.length === 0);
 
     switch (route.kind) {
@@ -1376,7 +1684,6 @@ const App = {
       this.navigate(Object.assign({}, mapped));
       return;
     }
-    // Búsqueda flexible por nombre de tabla
     if (this.boot.schemas[viewName]) {
       this.navigate({ kind: 'table', table: viewName, title: this.boot.schemas[viewName].label || viewName });
       return;
@@ -1384,18 +1691,35 @@ const App = {
     this.toast('Vista "' + viewName + '" no mapeada todavía.');
   },
 
+  isLiveConnected() {
+    return Boolean(window.__GAS_LIVE_CONNECTED__ || (this.boot && this.boot.isLiveBackend));
+  },
+
   // ==========================================================================
-  // VISTAS DE MENÚ (DINÁMICAS DESDE GOOGLE SHEETS + ACCESOS DIRECTOS)
+  // VISTAS DE MENÚ
   // ==========================================================================
   renderMenuTable(tableName) {
     const rows = (this.boot.navTables && this.boot.navTables[tableName]) || [];
     const schema = this.boot.schemas[tableName] || {};
     const labelKey = schema.keyCol || 'ID MENU';
 
-    let html = '<div class="section-header"><h2>' + this.esc(this.currentRoute.title) + '</h2></div>';
+    let html = '';
+    if (tableName === 'MENU') {
+      const live = this.isLiveConnected();
+      html += '<div class="dept-hero">' +
+        '<div class="dept-hero-left">' +
+        '<img class="dept-hero-logo" src="https://cristophermaciel.github.io/inspector-comercial/assets/logo-penaflor.jpg" onerror="this.src=\'./assets/logo-penaflor.jpg\'" alt="Logo Peñaflor">' +
+        '<div><h2>Departamento de Inspectores Comerciales</h2><p>Dirección de Seguridad Pública — Municipalidad de Peñaflor</p></div>' +
+        '</div>' +
+        '<div class="conn-badge ' + (live ? 'live' : 'demo') + '" onclick="App.openTab(\'backup\')">' +
+        (live ? '🟢 Conectado a Excel / Google Sheets en vivo' : '🟡 Modo Local — Clic para conectar Excel en vivo') +
+        '</div></div>';
+    } else {
+      html += '<div class="section-header"><h2>' + this.esc(this.currentRoute.title) + '</h2></div>';
+    }
 
     if (rows.length > 0) {
-      html += '<div class="gallery-grid">';
+      html += '<div class="gallery-grid" style="margin-bottom:20px;">';
       rows.forEach(r => {
         const title = r[labelKey] || r['VISTA'] || 'Opción';
         const vista = r['VISTA'] || '';
@@ -1405,16 +1729,13 @@ const App = {
           : '<div class="card-icon"><span class="material-icons">dashboard_customize</span></div>';
 
         html += '<div class="menu-card" onclick="App.openAppSheetViewName(\'' + this.escJs(vista) + '\')">' +
-          imgHtml +
-          '<div class="card-title">' + this.esc(title) + '</div>' +
-          '</div>';
+          imgHtml + '<div class="card-title">' + this.esc(title) + '</div></div>';
       });
       html += '</div>';
     }
 
-    // Siempre mostrar accesos rápidos completos en el Menú Principal
     if (tableName === 'MENU') {
-      html += '<div class="section-header" style="margin-top:24px;"><h2>Accesos Directos</h2></div>';
+      html += '<div class="section-header"><h2>Módulos de Fiscalización y Gestión</h2></div>';
       html += this._buildQuickCardsHtml();
     }
 
@@ -1432,13 +1753,13 @@ const App = {
       { title: 'Semana Peñaflorina', icon: 'festival', route: { kind: 'form', table: 'SEMANA PEÑAFLORINA', title: 'Semana Peñaflorina' } },
       { title: 'Notif. por Deudas', icon: 'notifications_active', route: { kind: 'table', table: 'Hoja 1', title: 'Notificaciones por Deudas' } },
       { title: 'Mapa Fiscalizaciones', icon: 'map', route: { kind: 'map', table: 'COMERCIO', title: 'Mapa de Fiscalizaciones' } },
-      { title: 'Dashboard', icon: 'bar_chart', route: { kind: 'dashboard', title: 'Dashboard Estadístico' } },
+      { title: 'Estadísticas / Dashboard', icon: 'bar_chart', route: { kind: 'dashboard', title: 'Estadísticas y Dashboard' } },
       { title: 'Documentos Drive', icon: 'folder_shared', route: { kind: 'links', table: 'DOCUMENTOS', title: 'Documentos Drive' } },
-      { title: 'Respaldo Excel', icon: 'cloud_download', route: { kind: 'backup', title: 'Respaldo Excel y Drive' } }
+      { title: 'Excel y Drive', icon: 'cloud_sync', route: { kind: 'backup', title: 'Excel, Drive y Conexión en Vivo' } }
     ];
 
     let html = '<div class="gallery-grid">';
-    quick.forEach((q, idx) => {
+    quick.forEach(q => {
       html += '<div class="menu-card" onclick=\'App.navigate(' + JSON.stringify(q.route) + ')\'>' +
         '<div class="card-icon"><span class="material-icons">' + q.icon + '</span></div>' +
         '<div class="card-title">' + this.esc(q.title) + '</div>' +
@@ -1456,7 +1777,7 @@ const App = {
       html += '<div class="menu-card" onclick="App.navigate({kind:\'form\',table:\'' + this.escJs(t) + '\',title:\'' + this.escJs(s.label) + '\'})">' +
         '<div class="card-icon"><span class="material-icons">' + (s.icon || 'edit_note') + '</span></div>' +
         '<div class="card-title">' + this.esc(s.label) + '</div>' +
-        (s.hasPdfBot ? '<span class="badge badge-blue">Auto PDF</span>' : '') +
+        (s.hasPdfBot ? '<span class="badge badge-blue">Auto PDF + Excel</span>' : '<span class="badge badge-blue">Excel</span>') +
         '</div>';
     });
     html += '</div>';
@@ -1465,7 +1786,7 @@ const App = {
 
   renderTablesHub() {
     const dataTables = ['COMERCIO', 'FUERA DE HORA', 'GIGANTOGRAFIA', 'PATENTES EN MORA', 'REPORTE', 'ASISTENCIA', 'SEMANA PEÑAFLORINA', 'Hoja 1', 'FUNCIONARIO', 'DOCUMENTOS'];
-    let html = '<div class="section-header"><h2>Listados y Registros</h2></div><div class="gallery-grid">';
+    let html = '<div class="section-header"><h2>Listados y Planillas Excel</h2></div><div class="gallery-grid">';
     dataTables.forEach(t => {
       const s = this.boot.schemas[t];
       html += '<div class="menu-card" onclick="App.navigate({kind:\'table\',table:\'' + this.escJs(t) + '\',title:\'' + this.escJs(s.label) + '\'})">' +
@@ -1488,8 +1809,7 @@ const App = {
       rows.forEach(r => {
         html += '<a class="menu-card" style="text-decoration:none;" href="' + this.esc(r['LINK'] || '#') + '" target="_blank">' +
           '<div class="card-icon"><span class="material-icons">open_in_new</span></div>' +
-          '<div class="card-title">' + this.esc(r['IR'] || 'Documento') + '</div>' +
-          '</a>';
+          '<div class="card-title">' + this.esc(r['IR'] || 'Documento') + '</div></a>';
       });
     }
     html += '</div>';
@@ -1497,7 +1817,7 @@ const App = {
   },
 
   // ==========================================================================
-  // FORMULARIO DINÁMICO (CON FOTOS, FIRMA CANVAS, GPS Y ENUMLIST)
+  // FORMULARIO DINÁMICO (DESPLEGABLES SIMPLES + DESPLEGABLES MULTI-SELECCIÓN)
   // ==========================================================================
   renderForm(tableName, existingRecord) {
     const schema = this.boot.schemas[tableName];
@@ -1529,21 +1849,16 @@ const App = {
         });
         inputHtml += '</select>';
       } else if (col.type === 'Enum') {
-        inputHtml = '<select class="form-control" data-col="' + this.esc(col.name) + '"><option value="">-- Seleccionar --</option>';
+        inputHtml = '<select class="form-control" data-col="' + this.esc(col.name) + '"><option value="">-- Seleccionar opción --</option>';
         (col.values || []).forEach(opt => {
           const sel = String(val).toUpperCase() === String(opt).toUpperCase() ? ' selected' : '';
           inputHtml += '<option value="' + this.esc(opt) + '"' + sel + '>' + this.esc(opt) + '</option>';
         });
         inputHtml += '</select>';
       } else if (col.type === 'EnumList') {
-        extraClass = 'full-width';
+        // DESPLEGABLE CON SELECCIÓN MÚLTIPLE + BUSCADOR + CHECKBOXES
         const selectedArr = String(val || '').split(',').map(s => s.trim()).filter(Boolean);
-        inputHtml = '<div class="chip-group" data-enumlist="' + this.esc(col.name) + '">';
-        (col.values || []).forEach(opt => {
-          const isSel = selectedArr.indexOf(opt) !== -1;
-          inputHtml += '<span class="chip' + (isSel ? ' selected' : '') + '" onclick="this.classList.toggle(\'selected\')" data-val="' + this.esc(opt) + '">' + this.esc(opt) + '</span>';
-        });
-        inputHtml += '</div>';
+        inputHtml = this._renderMultiSelectDropdown(fieldId, col.name, col.values || [], selectedArr);
       } else if (col.type === 'LongText') {
         extraClass = 'full-width';
         inputHtml = '<textarea class="form-control" data-col="' + this.esc(col.name) + '">' + this.esc(val) + '</textarea>';
@@ -1588,11 +1903,79 @@ const App = {
       '<div class="form-grid">' + fieldsHtml + '</div>' +
       '<div style="margin-top:20px;display:flex;gap:10px;justify-content:flex-end;">' +
       '<button type="button" class="btn btn-outline" onclick="App.goBack()">CANCELAR</button>' +
-      '<button type="submit" class="btn btn-primary"><span class="material-icons">save</span> GUARDAR' + (!isEdit && schema.hasPdfBot ? ' Y GENERAR PDF' : '') + '</button>' +
+      '<button type="submit" class="btn btn-primary"><span class="material-icons">save</span> GUARDAR EN EXCEL' + (!isEdit && schema.hasPdfBot ? ' Y PDF' : '') + '</button>' +
       '</div></form>';
 
     document.getElementById('appView').innerHTML = html;
     this.initSignaturePads();
+  },
+
+  _renderMultiSelectDropdown(fieldId, colName, values, selectedArr) {
+    let tagsHtml = '';
+    if (selectedArr.length === 0) {
+      tagsHtml = '<span class="ms-placeholder">Seleccionar una o varias opciones...</span>';
+    } else {
+      selectedArr.forEach(v => {
+        tagsHtml += '<span class="ms-tag">' + this.esc(v) + '</span>';
+      });
+    }
+
+    let optsHtml = '';
+    values.forEach(opt => {
+      const checked = selectedArr.indexOf(opt) !== -1 ? ' checked' : '';
+      optsHtml += '<label class="ms-opt" style="text-transform:none;font-weight:400;margin:0;letter-spacing:0;">' +
+        '<input type="checkbox" value="' + this.esc(opt) + '"' + checked + ' onchange="App.syncMultiSelect(\'' + fieldId + '\')">' +
+        '<span>' + this.esc(opt) + '</span></label>';
+    });
+
+    return '<div class="ms-dropdown" id="ms_' + fieldId + '" data-enumlist="' + this.esc(colName) + '">' +
+      '<div class="ms-trigger" onclick="App.toggleMultiSelect(\'' + fieldId + '\')">' +
+      '<div class="ms-tags" id="ms_tags_' + fieldId + '" style="display:flex;flex-wrap:wrap;gap:5px;">' + tagsHtml + '</div>' +
+      '<span class="material-icons ms-arrow">expand_more</span>' +
+      '</div>' +
+      '<div class="ms-panel">' +
+      '<input type="text" class="ms-search" placeholder="Filtrar opciones..." oninput="App.filterMultiSelect(\'' + fieldId + '\', this.value)">' +
+      '<div class="ms-actions">' +
+      '<button type="button" onclick="App.setAllMultiSelect(\'' + fieldId + '\', true)">Seleccionar todas</button>' +
+      '<button type="button" onclick="App.setAllMultiSelect(\'' + fieldId + '\', false)">Limpiar</button>' +
+      '<button type="button" onclick="App.toggleMultiSelect(\'' + fieldId + '\')">Listo ✓</button>' +
+      '</div>' +
+      '<div class="ms-options" id="ms_opts_' + fieldId + '">' + optsHtml + '</div>' +
+      '</div></div>';
+  },
+
+  toggleMultiSelect(fieldId) {
+    const el = document.getElementById('ms_' + fieldId);
+    if (!el) return;
+    const wasOpen = el.classList.contains('open');
+    document.querySelectorAll('.ms-dropdown.open').forEach(d => d.classList.remove('open'));
+    if (!wasOpen) el.classList.add('open');
+  },
+
+  filterMultiSelect(fieldId, query) {
+    const q = (query || '').toLowerCase();
+    document.querySelectorAll('#ms_opts_' + fieldId + ' .ms-opt').forEach(opt => {
+      const txt = opt.textContent.toLowerCase();
+      opt.style.display = txt.indexOf(q) !== -1 ? 'flex' : 'none';
+    });
+  },
+
+  setAllMultiSelect(fieldId, state) {
+    document.querySelectorAll('#ms_opts_' + fieldId + ' input[type="checkbox"]').forEach(cb => {
+      if (cb.closest('.ms-opt').style.display !== 'none') cb.checked = state;
+    });
+    this.syncMultiSelect(fieldId);
+  },
+
+  syncMultiSelect(fieldId) {
+    const box = document.getElementById('ms_tags_' + fieldId);
+    if (!box) return;
+    const vals = Array.from(document.querySelectorAll('#ms_opts_' + fieldId + ' input[type="checkbox"]:checked')).map(c => c.value);
+    if (vals.length === 0) {
+      box.innerHTML = '<span class="ms-placeholder">Seleccionar una o varias opciones...</span>';
+    } else {
+      box.innerHTML = vals.map(v => '<span class="ms-tag">' + this.esc(v) + '</span>').join('');
+    }
   },
 
   captureGPS(inputId) {
@@ -1619,7 +2002,6 @@ const App = {
     reader.onload = e => {
       const img = new Image();
       img.onload = () => {
-        // Comprimir imagen a máx 1280px para subida rápida a Google Drive
         const maxDim = 1280;
         let w = img.width, h = img.height;
         if (w > maxDim || h > maxDim) {
@@ -1651,7 +2033,7 @@ const App = {
       const ctx = canvas.getContext('2d');
       ctx.lineWidth = 2.4;
       ctx.lineCap = 'round';
-      ctx.strokeStyle = '#111827';
+      ctx.strokeStyle = '#101828';
 
       let drawing = false;
       let hasInk = false;
@@ -1701,13 +2083,13 @@ const App = {
       record[el.getAttribute('data-col')] = el.value;
     });
 
+    // Leer todos los desplegables multi-selección
     form.querySelectorAll('[data-enumlist]').forEach(group => {
       const col = group.getAttribute('data-enumlist');
-      const selected = Array.from(group.querySelectorAll('.chip.selected')).map(c => c.getAttribute('data-val'));
+      const selected = Array.from(group.querySelectorAll('input[type="checkbox"]:checked')).map(c => c.value);
       record[col] = selected.join(' , ');
     });
 
-    // Adjuntar firmas dibujadas
     Object.keys(this.signaturePads).forEach(id => {
       const pad = this.signaturePads[id];
       if (pad.hasInk()) {
@@ -1715,15 +2097,13 @@ const App = {
       }
     });
 
-    this.showLoader('Guardando registro, subiendo archivos a Drive y generando PDF...');
+    this.showLoader('Guardando datos en orden exacto en Excel/Sheets y Drive...');
     google.script.run
       .withSuccessHandler(res => {
         this.hideLoader();
         if (res && res.ok) {
-          let msg = res.isEdit ? 'Registro actualizado correctamente.' : 'Registro guardado en Google Sheets y Drive.';
-          if (res.pdf && res.pdf.url) {
-            msg += ' PDF generado automáticamente.';
-          }
+          let msg = res.isEdit ? 'Registro actualizado en la planilla.' : 'Registro guardado en orden exacto en la planilla.';
+          if (res.pdf && res.pdf.url) msg += ' PDF generado automáticamente.';
           this.toast(msg);
           this.navigate({ kind: 'table', table: tableName, title: schema.label });
         }
@@ -1736,7 +2116,7 @@ const App = {
   },
 
   // ==========================================================================
-  // VISTAS DE TABLA / LISTADOS
+  // VISTAS DE TABLA / LISTADOS + EXPORTACIÓN EXCEL .XLSX EN ORDEN EXACTO
   // ==========================================================================
   renderTable(tableName) {
     const schema = this.boot.schemas[tableName];
@@ -1778,7 +2158,7 @@ const App = {
     let html = '<div class="section-header">' +
       '<h2>' + this.esc(schema.label) + ' <span class="badge badge-blue">' + filtered.length + '</span></h2>' +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
-      '<button class="btn btn-outline btn-sm" onclick="App.exportCurrentTableCSV(\'' + this.escJs(tableName) + '\')"><span class="material-icons" style="font-size:16px;">download</span> Exportar CSV/Excel</button>' +
+      '<button class="btn btn-success btn-sm" onclick="App.exportCurrentTableXLSX(\'' + this.escJs(tableName) + '\')"><span class="material-icons" style="font-size:16px;">table_view</span> Descargar Excel (.xlsx)</button>' +
       '<button class="btn btn-primary btn-sm" onclick="App.navigate({kind:\'form\',table:\'' + this.escJs(tableName) + '\',title:\'' + this.escJs(schema.label) + '\'})"><span class="material-icons" style="font-size:16px;">add</span> NUEVO</button>' +
       '</div></div>' +
       summaryBanner +
@@ -1831,10 +2211,7 @@ const App = {
     const schema = this.boot.schemas[tableName];
 
     document.getElementById('modalTitle').textContent = schema.label + ' — ' + (row[schema.labelCol] || row.ID || '#' + rowNumber);
-    let body = '';
-
-    // Acciones rápidas (Llamar, Correo, Mapa, PDF)
-    body += '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">';
+    let body = '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">';
     if (row['TELEFONO']) body += '<a class="btn btn-outline btn-sm" href="tel:' + this.esc(row['TELEFONO']) + '">📞 Llamar</a>';
     if (row['EMAIL']) body += '<a class="btn btn-outline btn-sm" href="mailto:' + this.esc(row['EMAIL']) + '">✉️ Correo</a>';
     if (row['UBICACION']) body += '<a class="btn btn-outline btn-sm" target="_blank" href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(row['UBICACION']) + '">📍 Ver Mapa</a>';
@@ -1844,15 +2221,14 @@ const App = {
     if (schema.hasPdfBot) {
       body += '<button class="btn btn-primary btn-sm" onclick="App.regeneratePdf(\'' + this.escJs(tableName) + '\',' + rowNumber + ')">🔄 Generar PDF</button>';
     }
-    body += '<button class="btn btn-danger btn-sm" onclick="App.deleteRow(\'' + this.escJs(tableName) + '\',' + rowNumber + ')">🗑️ Eliminar</button>';
-    body += '</div>';
+    body += '<button class="btn btn-danger btn-sm" onclick="App.deleteRow(\'' + this.escJs(tableName) + '\',' + rowNumber + ')">🗑️ Eliminar</button></div>';
 
     schema.columns.forEach(col => {
       const val = row[col.name];
       if (val === undefined || val === null || val === '') return;
       let valHtml = this.esc(val);
       if ((col.type === 'Image' || col.type === 'Signature' || col.type === 'File' || col.type === 'Url') && String(val).startsWith('http')) {
-        valHtml = '<a href="' + this.esc(val) + '" target="_blank" style="color:var(--primary);font-weight:500;">Abrir archivo en Drive ↗</a>';
+        valHtml = '<a href="' + this.esc(val) + '" target="_blank" style="color:var(--accent);font-weight:600;">Abrir archivo en Drive ↗</a>';
       }
       body += '<div class="detail-row"><strong>' + this.esc(col.displayName || col.name) + '</strong><span>' + valHtml + '</span></div>';
     });
@@ -1883,7 +2259,7 @@ const App = {
   },
 
   deleteRow(tableName, rowNumber) {
-    if (!confirm('¿Seguro que deseas borrar este registro? Esta acción no se puede deshacer.')) return;
+    if (!confirm('¿Seguro que deseas borrar este registro?')) return;
     this.showLoader('Eliminando registro...');
     google.script.run
       .withSuccessHandler(() => {
@@ -1899,23 +2275,40 @@ const App = {
       .apiDeleteRecord(tableName, rowNumber);
   },
 
-  exportCurrentTableCSV(tableName) {
+  /**
+   * Exporta la tabla actual como archivo real Excel (.xlsx) en el orden exacto de columnas.
+   */
+  exportCurrentTableXLSX(tableName) {
     if (!this.currentTableData || !this.currentTableData.rows) return;
-    const headers = this.currentTableData.headers;
+    const schema = this.boot.schemas[tableName];
+    const headers = schema ? schema.columns.map(c => c.name) : this.currentTableData.headers;
     const rows = this.currentTableData.rows;
-    const csvLines = [headers.map(h => '"' + String(h).replace(/"/g, '""') + '"').join(';')];
-    rows.forEach(r => {
-      csvLines.push(headers.map(h => '"' + String(r[h] || '').replace(/"/g, '""') + '"').join(';'));
-    });
-    const blob = new Blob(['\uFEFF' + csvLines.join('\n')], { type: 'text/csv;charset=utf-8;' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = tableName.replace(/\s+/g, '_') + '_' + new Date().toISOString().slice(0, 10) + '.csv';
-    a.click();
+
+    if (typeof XLSX !== 'undefined') {
+      const aoa = [headers];
+      rows.forEach(r => {
+        aoa.push(headers.map(h => r[h] !== undefined && r[h] !== null ? r[h] : ''));
+      });
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      XLSX.utils.book_append_sheet(wb, ws, tableName.substring(0, 31));
+      XLSX.writeFile(wb, tableName.replace(/\s+/g, '_') + '_' + new Date().toISOString().slice(0, 10) + '.xlsx');
+      this.toast('Archivo Excel (.xlsx) descargado con orden exacto de columnas.');
+    } else {
+      const csvLines = [headers.map(h => '"' + String(h).replace(/"/g, '""') + '"').join(';')];
+      rows.forEach(r => {
+        csvLines.push(headers.map(h => '"' + String(r[h] || '').replace(/"/g, '""') + '"').join(';'));
+      });
+      const blob = new Blob(['\uFEFF' + csvLines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = tableName.replace(/\s+/g, '_') + '_' + new Date().toISOString().slice(0, 10) + '.csv';
+      a.click();
+    }
   },
 
   // ==========================================================================
-  // MAPA INTERACTIVO (FISCALIZACIONES COMERCIALES)
+  // MAPA INTERACTIVO
   // ==========================================================================
   renderMap(tableName) {
     const tablesWithLoc = ['COMERCIO', 'FUERA DE HORA', 'GIGANTOGRAFIA', 'PATENTES EN MORA', 'ASISTENCIA', 'REPORTE', 'SEMANA PEÑAFLORINA'];
@@ -1957,10 +2350,10 @@ const App = {
   },
 
   // ==========================================================================
-  // DASHBOARD (6 GRÁFICOS EXACTOS DE APPSHEET)
+  // DASHBOARD ESTADÍSTICO
   // ==========================================================================
   renderDashboard() {
-    this.showLoader('Calculando estadísticas del Dashboard...');
+    this.showLoader('Calculando estadísticas...');
     google.script.run
       .withSuccessHandler(stats => {
         this.hideLoader();
@@ -1968,7 +2361,7 @@ const App = {
         this.chartInstances = [];
 
         const k = stats.kpis;
-        const html = '<div class="section-header"><h2>Dashboard Estadístico</h2></div>' +
+        const html = '<div class="section-header"><h2>Estadísticas — Departamento de Inspectores Comerciales</h2></div>' +
           '<div class="kpi-grid">' +
           '<div class="kpi-card"><div class="kpi-label">Fis. Comerciales</div><div class="kpi-value">' + k.totalComercio + '</div></div>' +
           '<div class="kpi-card"><div class="kpi-label">Fuera de Horario</div><div class="kpi-value">' + k.totalFueraHora + '</div></div>' +
@@ -1988,7 +2381,7 @@ const App = {
 
         document.getElementById('appView').innerHTML = html;
 
-        const palette = ['#0b7bde', '#12b76a', '#f79009', '#f04438', '#7a5af8', '#06aed4', '#ee46bc'];
+        const palette = ['#0c347d', '#0b7bde', '#12b76a', '#f79009', '#f04438', '#7a5af8', '#06aed4'];
         const draw = (id, type, items, horizontal) => {
           const ctx = document.getElementById(id);
           if (!ctx) return;
@@ -1999,7 +2392,7 @@ const App = {
               datasets: [{
                 label: 'Cantidad / Monto',
                 data: items.map(i => i.value),
-                backgroundColor: type === 'doughnut' ? palette : '#0b7bde',
+                backgroundColor: type === 'doughnut' ? palette : '#0c347d',
                 borderRadius: type === 'bar' ? 6 : 0
               }]
             },
@@ -2028,14 +2421,30 @@ const App = {
   },
 
   // ==========================================================================
-  // RESPALDO EXCEL Y CARPETAS INDEPENDIENTES EN DRIVE
+  // RESPALDO EXCEL, CARPETAS DRIVE Y CONEXIÓN EN VIVO A APPS SCRIPT
   // ==========================================================================
   renderBackupPanel() {
     const f = this.boot.driveFolders || {};
-    const html = '<div class="section-header"><h2>Respaldo Excel (.xlsx) y Carpetas Drive</h2></div>' +
+    const savedApiUrl = localStorage.getItem('INSPECTOR_GAS_API_URL') || '';
+    const isEmbeddedGas = !window.__IS_PREVIEW_SHIM__;
+
+    let connectionCard = '';
+    if (!isEmbeddedGas) {
+      connectionCard = '<div class="card" style="border-left:5px solid var(--primary);">' +
+        '<h3 style="margin-top:0;color:var(--primary);">🔗 Conexión en Vivo a tus Excel / Google Sheets (Apps Script)</h3>' +
+        '<p style="color:var(--muted);font-size:13px;">Pegá aquí la URL de implementación de tu proyecto Google Apps Script (<code>https://script.google.com/macros/s/.../exec</code>) para que esta app móvil/escritorio guarde todos los registros en orden exacto en tus planillas <strong>INSPECTOR COMERCIAL</strong> y <strong>REGISTRO DE NOTIFICACIONES POR DEUDAS</strong>.</p>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+        '<input type="url" id="gasApiUrlInput" class="form-control" style="flex:1;min-width:260px;" placeholder="https://script.google.com/macros/s/AKfycb.../exec" value="' + this.esc(savedApiUrl) + '">' +
+        '<button class="btn btn-primary" onclick="App.saveGasApiUrl()">Conectar en Vivo</button>' +
+        (savedApiUrl ? '<button class="btn btn-outline" onclick="App.clearGasApiUrl()">Desconectar</button>' : '') +
+        '</div></div>';
+    }
+
+    const html = '<div class="section-header"><h2>Respaldo Excel (.xlsx), Drive y Conexión</h2></div>' +
+      connectionCard +
       '<div class="card">' +
       '<h3 style="margin-top:0;">Carpetas Independientes en Google Drive</h3>' +
-      '<p style="color:var(--muted);font-size:13px;">Todos los archivos de INSPECTOR COMERCIAL se organizan automáticamente en carpetas separadas dentro de <strong>INSPECTOR_COMERCIAL_DRIVE</strong>:</p>' +
+      '<p style="color:var(--muted);font-size:13px;">Todos los archivos se organizan automáticamente en carpetas independientes dentro de <strong>INSPECTOR_COMERCIAL_DRIVE</strong>:</p>' +
       '<div class="gallery-grid">' +
       '<a class="menu-card" style="text-decoration:none;" href="' + this.esc(f.root ? f.root.url : '#') + '" target="_blank"><div class="card-icon"><span class="material-icons">folder</span></div><div class="card-title">Carpeta Raíz App</div></a>' +
       '<a class="menu-card" style="text-decoration:none;" href="' + this.esc(f.fotos ? f.fotos.url : '#') + '" target="_blank"><div class="card-icon"><span class="material-icons">photo_library</span></div><div class="card-title">FOTOS (por módulo/registro)</div></a>' +
@@ -2044,8 +2453,8 @@ const App = {
       '<a class="menu-card" style="text-decoration:none;" href="' + this.esc(f.excel ? f.excel.url : '#') + '" target="_blank"><div class="card-icon"><span class="material-icons">table_view</span></div><div class="card-title">RESPALDOS EXCEL (.xlsx)</div></a>' +
       '</div></div>' +
       '<div class="card">' +
-      '<h3 style="margin-top:0;">Generar Respaldo en Excel (.xlsx)</h3>' +
-      '<p style="color:var(--muted);font-size:13px;">Exporta una copia completa en formato Microsoft Excel (.xlsx) de <strong>INSPECTOR COMERCIAL</strong> y <strong>REGISTRO DE NOTIFICACIONES POR DEUDAS</strong> directamente a tu carpeta de respaldos en Drive.</p>' +
+      '<h3 style="margin-top:0;">Respaldo Completo en Excel (.xlsx)</h3>' +
+      '<p style="color:var(--muted);font-size:13px;">Exporta ambas planillas oficiales en formato Microsoft Excel (.xlsx) manteniendo el orden exacto de columnas y tipos numéricos para tus estadísticas.</p>' +
       '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">' +
       '<button class="btn btn-primary" onclick="App.runExcelBackup()"><span class="material-icons">cloud_download</span> Generar Respaldo Excel Ahora</button>' +
       '<button class="btn btn-outline" onclick="App.toggleDailyBackup(' + (!this.boot.dailyBackupEnabled) + ')">' +
@@ -2056,6 +2465,23 @@ const App = {
 
     document.getElementById('appView').innerHTML = html;
     this.loadBackupHistory();
+  },
+
+  saveGasApiUrl() {
+    const val = (document.getElementById('gasApiUrlInput').value || '').trim();
+    if (!val.startsWith('https://script.google.com/')) {
+      this.toast('Ingresá una URL válida de Google Apps Script (https://script.google.com/macros/s/.../exec)');
+      return;
+    }
+    localStorage.setItem('INSPECTOR_GAS_API_URL', val);
+    this.toast('Conexión guardada. Recargando datos en vivo desde Google Sheets...');
+    setTimeout(() => location.reload(), 800);
+  },
+
+  clearGasApiUrl() {
+    localStorage.removeItem('INSPECTOR_GAS_API_URL');
+    this.toast('URL desconectada. Volviendo a modo vista previa local...');
+    setTimeout(() => location.reload(), 800);
   },
 
   loadBackupHistory() {

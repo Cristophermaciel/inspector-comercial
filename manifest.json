@@ -1,0 +1,26 @@
+{
+  "name": "Departamento de Inspectores Comerciales - Peñaflor",
+  "short_name": "Inspectores Peñaflor",
+  "description": "Sistema de Fiscalización Comercial, Publicidad, Ferias Libres, Patentes en Mora y Estadísticas - Dirección de Seguridad Pública Municipalidad de Peñaflor",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0c347d",
+  "theme_color": "#0c347d",
+  "lang": "es-CL",
+  "icons": [
+    {
+      "src": "./assets/logo-penaflor.jpg",
+      "sizes": "192x192",
+      "type": "image/jpeg",
+      "purpose": "any"
+    },
+    {
+      "src": "./assets/logo-penaflor.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ]
+}

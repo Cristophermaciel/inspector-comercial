@@ -7,17 +7,37 @@ const indexTpl = fs.readFileSync(path.join(srcDir, 'Index.html'), 'utf8');
 const appScript = fs.readFileSync(path.join(srcDir, 'AppScript.html'), 'utf8');
 const configGs = fs.readFileSync(path.join(srcDir, 'Config.gs'), 'utf8');
 
-// Extraer TABLE_SCHEMAS y APPSHEET_VIEW_MAP directamente de Config.gs
 const previewShim = `
 <script>
 // ============================================================================
-// ADAPTADOR DE VISTA PREVIA PARA GITHUB PAGES (solo activo fuera de Apps Script)
+// ADAPTADOR PWA (GITHUB PAGES) -> CONECTA EN VIVO A GOOGLE APPS SCRIPT
+// SI HAY URL CONFIGURADA, O USA MODO LOCAL DE VISTA PREVIA SI AÚN NO SE CONECTA
 // ============================================================================
 if (typeof google === 'undefined' || !google.script) {
+  window.__IS_PREVIEW_SHIM__ = true;
   (function() {
     ${configGs.replace(/const /g, 'var ')}
 
-    var STORAGE_KEY = 'inspector_comercial_preview_v1';
+    // Si el usuario guardó la URL de su Web App de Google Apps Script, conectar EN VIVO
+    var LIVE_API_URL = (localStorage.getItem('INSPECTOR_GAS_API_URL') || '').trim();
+    window.__GAS_LIVE_CONNECTED__ = Boolean(LIVE_API_URL);
+
+    function callLiveGas(action, payload) {
+      var isRead = (action === 'bootstrap' || action === 'rows' || action === 'dashboard' || action === 'map' || action === 'listExcelBackups');
+      if (isRead) {
+        var qs = '?action=' + encodeURIComponent(action);
+        if (payload && payload.table) qs += '&table=' + encodeURIComponent(payload.table);
+        return fetch(LIVE_API_URL + qs, { method: 'GET' }).then(function(r) { return r.json(); });
+      }
+      // Usar text/plain para evitar preflight CORS en Apps Script Web Apps
+      return fetch(LIVE_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(Object.assign({ action: action }, payload || {}))
+      }).then(function(r) { return r.json(); });
+    }
+
+    var STORAGE_KEY = 'inspector_comercial_preview_v2';
     var defaultDb = {
       'FUNCIONARIO': [
         { _RowNumber: 2, ID: 'F01', NOMBRE: 'CRISTOPHER MACIEL', ROL: 'Administrador / Inspector' },
@@ -74,19 +94,13 @@ if (typeof google === 'undefined' || !google.script) {
         var db = loadDb();
         return {
           authorized: true,
-          user: { email: 'cristopher.maciel@penaflor.cl (Vista Previa GitHub)', isAuthorized: true },
-          config: { appName: APP_CONFIG.APP_NAME, subtitle: APP_CONFIG.SUBTITLE + ' (Demo GitHub)', creator: APP_CONFIG.CREATOR, contact: APP_CONFIG.CONTACT, primaryColor: APP_CONFIG.PRIMARY_COLOR },
+          user: { email: 'cristopher.maciel@penaflor.cl (Vista Previa)', isAuthorized: true },
+          config: { appName: APP_CONFIG.APP_NAME, subtitle: APP_CONFIG.SUBTITLE, creator: APP_CONFIG.CREATOR, contact: APP_CONFIG.CONTACT, primaryColor: APP_CONFIG.PRIMARY_COLOR },
           schemas: TABLE_SCHEMAS,
           viewMap: APPSHEET_VIEW_MAP,
           funcionarios: db.FUNCIONARIO.map(function(f){ return { id: f.ID, nombre: f.NOMBRE, rol: f.ROL, imagen: f.IMAGEN || '' }; }),
           navTables: { MENU: [], SUBMENU: [], 'SUBMENU 2': [], 'SUBMENU 3': [], LISTADOS: [], 'FERIAS LIBRES': [], DOCUMENTOS: db.DOCUMENTOS },
-          driveFolders: {
-            root: { url: 'https://drive.google.com' },
-            fotos: { url: 'https://drive.google.com' },
-            firmas: { url: 'https://drive.google.com' },
-            pdfs: { url: 'https://drive.google.com' },
-            excel: { url: 'https://drive.google.com' }
-          },
+          driveFolders: { root: { url: 'https://drive.google.com' }, fotos: { url: 'https://drive.google.com' }, firmas: { url: 'https://drive.google.com' }, pdfs: { url: 'https://drive.google.com' }, excel: { url: 'https://drive.google.com' } },
           dailyBackupEnabled: true
         };
       },
@@ -110,7 +124,7 @@ if (typeof google === 'undefined' || !google.script) {
           if (idx !== -1) db[tableName][idx] = Object.assign({}, db[tableName][idx], recordData);
         } else {
           recordData._RowNumber = db[tableName].length + 2;
-          if (!recordData.ID) recordData.ID = 'DEMO-' + Math.random().toString(36).slice(2, 7).toUpperCase();
+          if (!recordData.ID) recordData.ID = 'REG-' + Math.random().toString(36).slice(2, 7).toUpperCase();
           if (!recordData['FECHA HORA']) recordData['FECHA HORA'] = new Date().toLocaleString('es-CL');
           db[tableName].unshift(recordData);
         }
@@ -123,9 +137,7 @@ if (typeof google === 'undefined' || !google.script) {
         saveDb(db);
         return { ok: true };
       },
-      apiRegeneratePdf: function() {
-        return { ok: true, pdf: { url: 'https://drive.google.com' } };
-      },
+      apiRegeneratePdf: function() { return { ok: true, pdf: { url: 'https://drive.google.com' } }; },
       apiGetDashboardStats: function() {
         var db = loadDb();
         var countBy = function(arr, col) {
@@ -170,18 +182,22 @@ if (typeof google === 'undefined' || !google.script) {
         });
         return pts;
       },
-      apiRunExcelBackup: function() {
-        return { timestamp: new Date().toLocaleString('es-CL'), files: [{ ok: true, name: 'INSPECTOR_COMERCIAL_DEMO.xlsx' }, { ok: true, name: 'NOTIFICACIONES_DEUDAS_DEMO.xlsx' }] };
-      },
-      apiListExcelBackups: function() {
-        return [
-          { name: 'INSPECTOR_COMERCIAL_2026-11-19_1300.xlsx', date: '19/11/2026 13:00', sizeKb: 148, downloadUrl: '#' },
-          { name: 'NOTIFICACIONES_DEUDAS_2026-11-19_1300.xlsx', date: '19/11/2026 13:00', sizeKb: 42, downloadUrl: '#' }
-        ];
-      },
-      apiToggleDailyBackup: function(enable) {
-        return { ok: true, message: enable ? 'Respaldo diario activado (23:00 hrs).' : 'Respaldo diario desactivado.' };
-      }
+      apiRunExcelBackup: function() { return { timestamp: new Date().toLocaleString('es-CL'), files: [{ ok: true, name: 'INSPECTOR_COMERCIAL_DEMO.xlsx' }, { ok: true, name: 'NOTIFICACIONES_DEUDAS_DEMO.xlsx' }] }; },
+      apiListExcelBackups: function() { return []; },
+      apiToggleDailyBackup: function(enable) { return { ok: true, message: enable ? 'Respaldo diario activado (23:00 hrs).' : 'Respaldo diario desactivado.' }; }
+    };
+
+    var LIVE_MAP = {
+      apiGetBootstrap: function() { return callLiveGas('bootstrap'); },
+      apiGetTableRows: function(table) { return callLiveGas('rows', { table: table }); },
+      apiSaveRecord: function(table, record, mediaUploads) { return callLiveGas('saveRecord', { table: table, record: record, mediaUploads: mediaUploads }); },
+      apiDeleteRecord: function(table, rowNumber) { return callLiveGas('deleteRecord', { table: table, rowNumber: rowNumber }); },
+      apiRegeneratePdf: function(table, rowNumber) { return callLiveGas('regeneratePdf', { table: table, rowNumber: rowNumber }); },
+      apiGetDashboardStats: function() { return callLiveGas('dashboard'); },
+      apiGetMapPoints: function(table) { return callLiveGas('map', { table: table }); },
+      apiRunExcelBackup: function() { return callLiveGas('runExcelBackup'); },
+      apiListExcelBackups: function() { return callLiveGas('listExcelBackups'); },
+      apiToggleDailyBackup: function(enable) { return callLiveGas('toggleDailyBackup', { enable: enable }); }
     };
 
     function makeRunner(okCb, errCb) {
@@ -192,14 +208,20 @@ if (typeof google === 'undefined' || !google.script) {
       Object.keys(mockServer).forEach(function(fnName) {
         runner[fnName] = function() {
           var args = Array.prototype.slice.call(arguments);
-          setTimeout(function() {
-            try {
-              var res = mockServer[fnName].apply(null, args);
-              if (okCb) okCb(res);
-            } catch (e) {
-              if (errCb) errCb(e);
-            }
-          }, 120);
+          if (LIVE_API_URL && LIVE_MAP[fnName]) {
+            LIVE_MAP[fnName].apply(null, args)
+              .then(function(res) { if (okCb) okCb(res); })
+              .catch(function(err) { if (errCb) errCb(err); });
+          } else {
+            setTimeout(function() {
+              try {
+                var res = mockServer[fnName].apply(null, args);
+                if (okCb) okCb(res);
+              } catch (e) {
+                if (errCb) errCb(e);
+              }
+            }, 90);
+          }
         };
       });
       return runner;
@@ -212,8 +234,8 @@ if (typeof google === 'undefined' || !google.script) {
 `;
 
 const output = indexTpl
-  .replace(/<\?=\s*appName\s*\?>/g, () => 'INSPECTOR COMERCIAL')
-  .replace(/<\?=\s*subtitle\s*\?>/g, () => 'Dirección Seguridad Pública Peñaflor')
+  .replace(/<\?=\s*appName\s*\?>/g, () => 'Departamento de Inspectores Comerciales')
+  .replace(/<\?=\s*subtitle\s*\?>/g, () => 'Seguridad Pública Municipalidad de Peñaflor')
   .replace(/<\?!=\s*include\('Styles'\);\s*\?>/g, () => styles)
   .replace(/<\?!=\s*include\('AppScript'\);\s*\?>/g, () => previewShim + '\n' + appScript);
 
