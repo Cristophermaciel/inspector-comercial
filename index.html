@@ -1,0 +1,2149 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>INSPECTOR COMERCIAL</title>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+  :root {
+    --primary: #0b7bde;
+    --primary-dark: #085ea8;
+    --primary-light: #e8f3fd;
+    --bg: #f3f6fa;
+    --surface: #ffffff;
+    --text: #1d2939;
+    --muted: #667085;
+    --border: #e2e8f0;
+    --success: #12b76a;
+    --warning: #f79009;
+    --danger: #f04438;
+    --radius: 12px;
+    --shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 15px;
+    padding-bottom: 72px;
+  }
+
+  /* HEADER */
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: var(--primary);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    box-shadow: 0 2px 8px rgba(11, 123, 222, 0.25);
+  }
+  .topbar-title {
+    flex: 1;
+    min-width: 0;
+  }
+  .topbar-title h1 {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .topbar-title small {
+    display: block;
+    font-size: 11px;
+    opacity: 0.88;
+  }
+  .icon-btn {
+    background: rgba(255, 255, 255, 0.16);
+    border: none;
+    color: #fff;
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .icon-btn:hover { background: rgba(255, 255, 255, 0.28); }
+  .icon-btn.hidden { display: none; }
+
+  /* LAYOUT DESKTOP + MOBILE */
+  .app-shell {
+    display: flex;
+    max-width: 1440px;
+    margin: 0 auto;
+    min-height: calc(100vh - 64px);
+  }
+  .sidebar {
+    display: none;
+    width: 248px;
+    flex-shrink: 0;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 14px 10px;
+  }
+  .sidebar-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    border: none;
+    background: transparent;
+    color: var(--text);
+    padding: 11px 14px;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    text-align: left;
+    margin-bottom: 4px;
+  }
+  .sidebar-item:hover { background: var(--bg); }
+  .sidebar-item.active {
+    background: var(--primary-light);
+    color: var(--primary);
+    font-weight: 600;
+  }
+  .sidebar-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 12px 8px;
+  }
+  .sidebar-footer {
+    padding: 10px 12px;
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  .main-content {
+    flex: 1;
+    min-width: 0;
+    padding: 16px;
+  }
+
+  /* BOTTOM NAV (MOBILE) */
+  .bottom-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-around;
+    padding: 6px 4px;
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
+  }
+  .nav-btn {
+    flex: 1;
+    border: none;
+    background: none;
+    color: var(--muted);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 4px 2px;
+    cursor: pointer;
+  }
+  .nav-btn.active { color: var(--primary); font-weight: 600; }
+  .nav-btn .material-icons { font-size: 22px; }
+
+  @media (min-width: 900px) {
+    body { padding-bottom: 0; }
+    .sidebar { display: block; }
+    .bottom-nav { display: none; }
+    .main-content { padding: 24px 28px; }
+  }
+
+  /* GALLERY MENU CARDS */
+  .gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(158px, 1fr));
+    gap: 14px;
+  }
+  .menu-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px 14px;
+    text-align: center;
+    cursor: pointer;
+    box-shadow: var(--shadow);
+    transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    min-height: 132px;
+  }
+  .menu-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--primary);
+    box-shadow: 0 6px 18px rgba(11, 123, 222, 0.14);
+  }
+  .menu-card .card-icon {
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    background: var(--primary-light);
+    color: var(--primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .menu-card .card-icon .material-icons { font-size: 28px; }
+  .menu-card img.card-thumb {
+    width: 64px;
+    height: 64px;
+    object-fit: cover;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+  }
+  .menu-card .card-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1.3;
+  }
+
+  /* SECTION & CARDS */
+  .section-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .section-header h2 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px;
+    box-shadow: var(--shadow);
+    margin-bottom: 16px;
+  }
+
+  /* BUTTONS */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background 0.15s, opacity 0.15s;
+  }
+  .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-primary:hover { background: var(--primary-dark); }
+  .btn-outline { background: #fff; color: var(--text); border: 1px solid var(--border); }
+  .btn-outline:hover { background: var(--bg); }
+  .btn-success { background: var(--success); color: #fff; }
+  .btn-danger { background: var(--danger); color: #fff; }
+  .btn-sm { padding: 6px 10px; font-size: 12px; border-radius: 6px; }
+
+  /* FORMS */
+  .form-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  @media (min-width: 720px) {
+    .form-grid { grid-template-columns: repeat(2, 1fr); }
+    .form-field.full-width { grid-column: 1 / -1; }
+  }
+  .form-field label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: #344054;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  .form-control {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+    background: #fff;
+    color: var(--text);
+  }
+  .form-control:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(11, 123, 222, 0.14);
+  }
+  textarea.form-control { min-height: 84px; resize: vertical; }
+
+  /* CHIPS (ENUMLIST) */
+  .chip-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .chip {
+    padding: 7px 12px;
+    border-radius: 20px;
+    border: 1px solid #cbd5e1;
+    background: #fff;
+    font-size: 13px;
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.12s;
+  }
+  .chip.selected {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: #fff;
+    font-weight: 500;
+  }
+
+  /* MEDIA & SIGNATURE */
+  .photo-box {
+    border: 1.5px dashed #cbd5e1;
+    border-radius: 10px;
+    padding: 12px;
+    text-align: center;
+    background: #fafcff;
+  }
+  .photo-preview {
+    max-width: 100%;
+    max-height: 180px;
+    border-radius: 8px;
+    margin-top: 8px;
+    display: none;
+  }
+  .sig-pad {
+    width: 100%;
+    height: 170px;
+    border: 1.5px solid #cbd5e1;
+    border-radius: 10px;
+    background: #fff;
+    touch-action: none;
+    cursor: crosshair;
+  }
+  .loc-row {
+    display: flex;
+    gap: 8px;
+  }
+
+  /* TABLES */
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 14px;
+    align-items: center;
+  }
+  .search-input {
+    flex: 1;
+    min-width: 210px;
+  }
+  .table-wrap {
+    overflow-x: auto;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+  }
+  table.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  table.data-table th {
+    background: #f8fafc;
+    color: #475467;
+    font-weight: 600;
+    text-align: left;
+    padding: 11px 12px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  table.data-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: middle;
+  }
+  table.data-table tr:hover td { background: #f8fbff; }
+
+  .badge {
+    display: inline-block;
+    padding: 3px 9px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .badge-blue { background: var(--primary-light); color: var(--primary); }
+  .badge-green { background: #ecfdf3; color: #027a48; }
+  .badge-red { background: #fef3f2; color: #b42318; }
+  .badge-amber { background: #fffaeb; color: #b54708; }
+
+  /* KPI & DASHBOARD */
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+  .kpi-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    box-shadow: var(--shadow);
+  }
+  .kpi-card .kpi-label { font-size: 12px; color: var(--muted); font-weight: 500; }
+  .kpi-card .kpi-value { font-size: 24px; font-weight: 700; color: var(--primary); margin-top: 4px; }
+
+  .charts-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  @media (min-width: 820px) {
+    .charts-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+  .chart-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    box-shadow: var(--shadow);
+  }
+  .chart-card h3 {
+    margin: 0 0 12px 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .chart-box { position: relative; height: 260px; }
+
+  /* MAP */
+  #mapContainer {
+    width: 100%;
+    height: 520px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    z-index: 1;
+  }
+
+  /* MODAL */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.55);
+    z-index: 200;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+  .modal-backdrop.open { display: flex; }
+  .modal-dialog {
+    background: var(--surface);
+    border-radius: 14px;
+    width: 100%;
+    max-width: 680px;
+    max-height: 88vh;
+    overflow-y: auto;
+    padding: 20px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
+  }
+  .detail-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid #f1f5f9;
+    font-size: 13px;
+  }
+  .detail-row strong { color: #475467; min-width: 160px; }
+
+  /* LOADER & TOAST */
+  .loader-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.8);
+    z-index: 300;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+  }
+  .loader-overlay.open { display: flex; }
+  .spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid var(--primary-light);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .toast {
+    position: fixed;
+    bottom: 84px;
+    right: 20px;
+    z-index: 400;
+    background: #1d2939;
+    color: #fff;
+    padding: 12px 18px;
+    border-radius: 10px;
+    font-size: 13px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+    display: none;
+    max-width: 360px;
+  }
+  .toast.show { display: block; }
+</style>
+
+</head>
+<body>
+
+  <!-- BARRA SUPERIOR -->
+  <header class="topbar">
+    <button id="btnBack" class="icon-btn hidden" onclick="App.goBack()" title="Volver">
+      <span class="material-icons">arrow_back</span>
+    </button>
+    <div class="topbar-title">
+      <h1 id="headerTitle">INSPECTOR COMERCIAL</h1>
+      <small id="headerSubtitle">Dirección Seguridad Pública Peñaflor</small>
+    </div>
+    <button class="icon-btn" onclick="App.refreshCurrent()" title="Sincronizar">
+      <span class="material-icons">sync</span>
+    </button>
+  </header>
+
+  <!-- CONTENEDOR PRINCIPAL -->
+  <div class="app-shell">
+    <!-- BARRA LATERAL DESKTOP -->
+    <aside class="sidebar">
+      <button class="sidebar-item active" data-tab="menu" onclick="App.openTab('menu')">
+        <span class="material-icons">apps</span> Menú Principal
+      </button>
+      <button class="sidebar-item" data-tab="forms" onclick="App.openTab('forms')">
+        <span class="material-icons">edit_note</span> Formularios
+      </button>
+      <button class="sidebar-item" data-tab="tables" onclick="App.openTab('tables')">
+        <span class="material-icons">table_rows</span> Listados y Registros
+      </button>
+      <button class="sidebar-item" data-tab="map" onclick="App.openTab('map')">
+        <span class="material-icons">map</span> Mapa Fiscalizaciones
+      </button>
+      <button class="sidebar-item" data-tab="dashboard" onclick="App.openTab('dashboard')">
+        <span class="material-icons">bar_chart</span> Dashboard
+      </button>
+      <div class="sidebar-divider"></div>
+      <button class="sidebar-item" data-tab="backup" onclick="App.openTab('backup')">
+        <span class="material-icons">cloud_download</span> Respaldo Excel y Drive
+      </button>
+      <div class="sidebar-divider"></div>
+      <div class="sidebar-footer">
+        <div id="userEmailLabel">Conectando...</div>
+        <div>CREADOR CRISTOPHER MACIEL</div>
+        <div>CONTACTO 1410</div>
+      </div>
+    </aside>
+
+    <!-- ÁREA DE CONTENIDO DINÁMICO -->
+    <main class="main-content" id="appView">
+      <div class="card" style="text-align:center;padding:40px;">
+        Cargando Inspector Comercial...
+      </div>
+    </main>
+  </div>
+
+  <!-- BARRA INFERIOR MÓVIL -->
+  <nav class="bottom-nav">
+    <button class="nav-btn active" data-tab="menu" onclick="App.openTab('menu')">
+      <span class="material-icons">apps</span>Menú
+    </button>
+    <button class="nav-btn" data-tab="forms" onclick="App.openTab('forms')">
+      <span class="material-icons">edit_note</span>Formularios
+    </button>
+    <button class="nav-btn" data-tab="tables" onclick="App.openTab('tables')">
+      <span class="material-icons">table_rows</span>Listados
+    </button>
+    <button class="nav-btn" data-tab="dashboard" onclick="App.openTab('dashboard')">
+      <span class="material-icons">bar_chart</span>Dashboard
+    </button>
+    <button class="nav-btn" data-tab="backup" onclick="App.openTab('backup')">
+      <span class="material-icons">cloud_download</span>Respaldo
+    </button>
+  </nav>
+
+  <!-- MODAL DETALLE DE REGISTRO -->
+  <div id="detailModal" class="modal-backdrop" onclick="if(event.target===this)App.closeModal()">
+    <div class="modal-dialog">
+      <div class="section-header" style="margin-bottom:10px;">
+        <h2 id="modalTitle" style="font-size:17px;">Detalle del Registro</h2>
+        <button class="btn btn-outline btn-sm" onclick="App.closeModal()">Cerrar</button>
+      </div>
+      <div id="modalBody"></div>
+    </div>
+  </div>
+
+  <!-- LOADER GLOBAL -->
+  <div id="globalLoader" class="loader-overlay">
+    <div class="spinner"></div>
+    <div id="loaderText" style="font-weight:500;color:#0b7bde;">Procesando...</div>
+  </div>
+
+  <!-- NOTIFICACIÓN TOAST -->
+  <div id="toast" class="toast"></div>
+
+  
+<script>
+// ============================================================================
+// ADAPTADOR DE VISTA PREVIA PARA GITHUB PAGES (solo activo fuera de Apps Script)
+// ============================================================================
+if (typeof google === 'undefined' || !google.script) {
+  (function() {
+    /**
+ * ============================================================================
+ * INSPECTOR COMERCIAL - CONFIGURACIÓN GENERAL Y ESQUEMA DE TABLAS
+ * Dirección Seguridad Pública Municipalidad de Peñaflor
+ * Migrado desde AppSheet (INSPECTORCOMERCIAL-286879258) a Google Apps Script
+ * ============================================================================
+ */
+
+var APP_CONFIG = {
+  APP_NAME: 'INSPECTOR COMERCIAL',
+  SUBTITLE: 'Dirección Seguridad Pública Peñaflor',
+  CREATOR: 'CREADOR CRISTOPHER MACIEL',
+  CONTACT: 'CONTACTO 1410',
+  PRIMARY_COLOR: '#0b7bde',
+  TIMEZONE: 'America/Santiago',
+
+  // Hojas de cálculo originales de AppSheet
+  SPREADSHEETS: {
+    MAIN: '1jsgsXgkJ2UfW9cZhbw02HUK795lyYjB_uxPwLizyp7I',
+    DEUDAS: '1X0dTJEi6_OCznXFTEwc571DaYWFTkE_LL3AnwR0R9B4'
+  },
+
+  // Carpeta raíz independiente en Google Drive para esta aplicación
+  DRIVE_ROOT_FOLDER_NAME: 'INSPECTOR_COMERCIAL_DRIVE',
+  DRIVE_SUBFOLDERS: {
+    FOTOS: 'FOTOS',
+    FIRMAS: 'FIRMAS',
+    DOCUMENTOS_PDF: 'DOCUMENTOS_PDF',
+    RESPALDOS_EXCEL: 'RESPALDOS_EXCEL'
+  },
+
+  // Control de acceso (lista original de AppSheet)
+  // Cambiar REQUIRE_AUTH_LIST a true si se despliega en dominio Google Workspace
+  // con acceso restringido a usuarios autenticados.
+  REQUIRE_AUTH_LIST: false,
+  AUTHORIZED_USERS: [
+    'cristopher.maciel@penaflor.cl',
+    'central1410@penaflor.cl',
+    'david.hernandez@penaflor.cl',
+    'inspecciones@penaflor.cl',
+    'luis.zamorano@penaflor.cl',
+    'nicolas.zamorano@penaflor.cl',
+    'tamara.martinez@penaflor.cl',
+    'leonardo.herrera@penaflor.cl',
+    'patricio.cancino@penaflor.cl'
+  ],
+
+  // 5 Bots de generación automática de PDF (plantillas Google Docs originales)
+  PDF_BOTS: {
+    'COMERCIO': {
+      botName: 'comercio pdf',
+      templateDocId: '1UvOA76n4T5eb6Wb-59dfs4pK1svzRWKekTZwhX6QBqg',
+      folderName: 'REPORTE DE FISCALIZACION COMERCIAL DIARIA',
+      prefixColumn: 'FECHA HORA',
+      pdfColumn: 'PDF'
+    },
+    'FUERA DE HORA': {
+      botName: 'fuera de hora pdf',
+      templateDocId: '19W13bTRPNAm4AEDZ-hBDYQc7PD7_jfINqdc2bpsXzSk',
+      folderName: 'REPORTES FUERA DE HORARIO ESTABLECIDO',
+      prefixColumn: 'FECHA HORA',
+      pdfColumn: 'PDF'
+    },
+    'GIGANTOGRAFIA': {
+      botName: 'informe publicidad pdf',
+      templateDocId: '1KyMkHQue4HGF0Lv_KBd58S7Yq7G6yySOPKK9aEm5J-k',
+      folderName: 'INFORME DE PUBLICIDAD',
+      prefixColumn: 'FECHA HORA',
+      pdfColumn: 'PDF'
+    },
+    'PATENTES EN MORA': {
+      botName: 'fiscalizaciones morosas pdf',
+      templateDocId: '1glmlnVjrLGqwM8KBx_k98UgdOKhEUI8EkLeh9dvc1uA',
+      folderName: 'FISCALIZACIONES MOROSAS',
+      prefixColumn: 'NOMBRE LOCAL COMERCIAL',
+      pdfColumn: ''
+    },
+    'REPORTE': {
+      botName: 'reportes jefatura pdf',
+      templateDocId: '1ypLF72jHMn7HeCSwndm_oF6fT7vl2ZIgpZlcuKnLYMM',
+      folderName: 'REPORTES A JEFATURAS',
+      prefixColumn: 'FECHA HORA',
+      pdfColumn: 'PDF'
+    }
+  }
+};
+
+/**
+ * Definición completa de las 16 tablas de usuario de INSPECTOR COMERCIAL.
+ * Mantiene los nombres exactos de hojas y columnas de AppSheet para 100% compatibilidad.
+ */
+var TABLE_SCHEMAS = {
+  'COMERCIO': {
+    spreadsheetKey: 'MAIN',
+    sheetName: 'COMERCIO',
+    label: 'Fiscalización Comercial',
+    icon: 'store',
+    keyCol: 'ID',
+    labelCol: 'NOMBRE LOCAL',
+    hasPdfBot: true,
+    formColumns: [
+      'INSPECTOR', 'FECHA HORA', 'TIPO DE INTERVENCION', 'TIPO FISCALIZACION',
+      'DIRECCION', 'TELEFONO', 'EMAIL', 'NOMBRE LOCAL',
+      'NOMBRE DUEÑO O RAZON SOCIAL', 'RUT', 'PRODUCTOS QUE VENDE', 'GIRO',
+      'DOCUMENTO FISCALIZADO', 'CUENTA CON PATENTE', 'EXHIBE PATENTE',
+      'PERMISO AL DIA', 'OBSERVACIONES FISCALIZACION', 'UBICACION',
+      'INTERVENCION', 'OTROS ANTECEDENTES', 'FOTO 1', 'FOTO 2', 'FOTO 3', 'FIRMA'
+    ],
+    tableColumns: [
+      'FECHA HORA', 'INSPECTOR', 'NOMBRE LOCAL', 'RUT', 'DIRECCION',
+      'CUENTA CON PATENTE', 'PERMISO AL DIA', 'PDF'
+    ],
+    columns: [
+      { name: 'ID', type: 'Text', isKey: true, initial: 'UNIQUEID', hiddenInForm: true },
+      { name: 'INSPECTOR', type: 'Ref', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
+      { name: 'FECHA HORA', type: 'DateTime', initial: 'NOW' },
+      { name: 'TIPO DE INTERVENCION', type: 'EnumList', values: ['Fiscalización de rutina', 'Denuncia ciudadana', 'Operativo conjunto', 'Inspección por reincidencia', 'Control nocturno', 'Control de patentes', 'Otro'] },
+      { name: 'TIPO FISCALIZACION', type: 'EnumList', values: ['Inspección', 'Infracción cursada', 'Clausura', 'Notificación', 'Citación al Juzgado', 'Advertencia verbal', 'Decomiso', 'Otro'] },
+      { name: 'DIRECCION', type: 'LongText' },
+      { name: 'NOMBRE LOCAL', type: 'Text' },
+      { name: 'NOMBRE DUEÑO O RAZON SOCIAL', type: 'Text' },
+      { name: 'RUT', type: 'Text' },
+      { name: 'PRODUCTOS QUE VENDE', type: 'EnumList', values: ['Alimentos', 'Botillería', 'Restaurante', 'Comida rápida', 'Ferretería', 'Ropa', 'Minimarket', 'Taller mecánico', 'Servicios', 'Otro'] },
+      { name: 'GIRO', type: 'Enum', values: ['AMBULANTE', 'COMERCIAL', 'PERMISO PROVISORIO', 'INDUSTRIAL', 'ALCOHOLES', 'FERIAS LIBRES VTA AL DETALLE', 'MICROEMPRESA FAMILIAR', 'OTRO', 'SIN PATENTE'] },
+      { name: 'DOCUMENTO FISCALIZADO', type: 'EnumList', values: ['Patente comercial', 'Permiso municipal', 'Resolución sanitaria', 'Inicio de actividades SII', 'Boletas / Facturas', 'Contrato de arriendo', 'Otro'] },
+      { name: 'CUENTA CON PATENTE', type: 'Enum', values: ['SI', 'NO', 'EN TRAMITE', 'ATRASADA'] },
+      { name: 'EXHIBE PATENTE', displayName: 'PATENTE VISIBLE', type: 'Enum', values: ['SI', 'NO', 'NO CORRESPONDE'] },
+      { name: 'PERMISO AL DIA', type: 'Enum', values: ['SI', 'NO', 'EN TRAMITE', 'VENCIDO', 'NO APLICA'] },
+      { name: 'OBSERVACIONES FISCALIZACION', type: 'LongText' },
+      { name: 'UBICACION', displayName: 'UBICACIÓN GPS', type: 'Location' },
+      { name: 'INTERVENCION', type: 'Text' },
+      { name: 'OTROS ANTECEDENTES', type: 'LongText' },
+      { name: 'FOTO 1', type: 'Image' },
+      { name: 'FOTO 2', type: 'Image' },
+      { name: 'FOTO 3', type: 'Image' },
+      { name: 'FIRMA', type: 'Signature' },
+      { name: 'EMAIL', type: 'Email' },
+      { name: 'TELEFONO', type: 'Phone' },
+      { name: 'PDF', type: 'File', readOnly: true }
+    ]
+  },
+
+  'FUERA DE HORA': {
+    spreadsheetKey: 'MAIN',
+    sheetName: 'FUERA DE HORA',
+    label: 'Fiscalización Fuera de Horario',
+    icon: 'schedule',
+    keyCol: 'ID',
+    labelCol: 'NOMBRE LOCAL',
+    hasPdfBot: true,
+    formColumns: [
+      'INSPECTOR', 'FECHA HORA', 'TIPO DE INTERVENCION', 'TIPO FISCALIZACION',
+      'TELEFONO', 'EMAIL', 'DIRECCION', 'NOMBRE LOCAL',
+      'NOMBRE DUEÑO O RAZON SOCIAL', 'RUT', 'PRODUCTOS QUE VENDE', 'GIRO',
+      'DOCUMENTO FISCALIZADO', 'CUENTA CON PATENTE', 'EXHIBE PATENTE',
+      'PERMISO AL DIA', 'OTROS DOCUMENTOS', 'OBSERVACIONES FISCALIZACION',
+      'UBICACION', 'APOYOS O INTERVENCIONES', 'DESCRIBA INCIDENTE SI HUBO',
+      'FOTO 1', 'FOTO 2', 'FOTO 3', 'FIRMA'
+    ],
+    tableColumns: [
+      'FECHA HORA', 'INSPECTOR', 'NOMBRE LOCAL', 'RUT', 'DIRECCION',
+      'CUENTA CON PATENTE', 'PERMISO AL DIA', 'PDF'
+    ],
+    columns: [
+      { name: 'ID', type: 'Text', isKey: true, initial: 'UNIQUEID', hiddenInForm: true },
+      { name: 'INSPECTOR', type: 'Ref', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
+      { name: 'FECHA HORA', type: 'DateTime', initial: 'NOW' },
+      { name: 'TIPO DE INTERVENCION', type: 'EnumList', values: ['Fiscalización de rutina', 'Denuncia ciudadana', 'Operativo conjunto', 'Inspección por reincidencia', 'Control nocturno', 'Control de patentes', 'Otro'] },
+      { name: 'TIPO FISCALIZACION', type: 'EnumList', values: ['Inspección', 'Infracción cursada', 'Clausura', 'Notificación', 'Citación al Juzgado', 'Advertencia verbal', 'Decomiso', 'Otro'] },
+      { name: 'DIRECCION', type: 'Location' },
+      { name: 'NOMBRE LOCAL', type: 'Text' },
+      { name: 'NOMBRE DUEÑO O RAZON SOCIAL', type: 'Text' },
+      { name: 'RUT', type: 'Text' },
+      { name: 'PRODUCTOS QUE VENDE', type: 'EnumList', values: ['Alimentos', 'Botillería', 'Restaurante', 'Comida rápida', 'Ferretería', 'Ropa', 'Minimarket', 'Taller mecánico', 'Servicios', 'Otro'] },
+      { name: 'GIRO', type: 'Enum', values: ['Ambulante', 'Comercial', 'Permiso Provisorio', 'Industrial', 'Alcoholes', 'Ferias Libres', 'Micro Empresas', 'Otros', 'Sin Patente'] },
+      { name: 'DOCUMENTO FISCALIZADO', type: 'Text' },
+      { name: 'CUENTA CON PATENTE', type: 'Enum', values: ['SI', 'NO', 'EN TRAMITE'] },
+      { name: 'EXHIBE PATENTE', type: 'Enum', values: ['si', 'no', 'no corresponde'] },
+      { name: 'PERMISO AL DIA', type: 'Enum', values: ['si', 'no', 'vencido', 'no aplica'] },
+      { name: 'OTROS DOCUMENTOS', type: 'Text' },
+      { name: 'OBSERVACIONES FISCALIZACION', type: 'LongText' },
+      { name: 'UBICACION', type: 'Location' },
+      { name: 'APOYOS O INTERVENCIONES', type: 'Text' },
+      { name: 'DESCRIBA INCIDENTE SI HUBO', type: 'LongText' },
+      { name: 'FOTO 1', type: 'Image' },
+      { name: 'FOTO 2', type: 'Image' },
+      { name: 'FOTO 3', type: 'Image' },
+      { name: 'FIRMA', type: 'Signature' },
+      { name: 'PDF', type: 'File', readOnly: true },
+      { name: 'EMAIL', type: 'Email' },
+      { name: 'TELEFONO', type: 'Phone' }
+    ]
+  },
+
+  'GIGANTOGRAFIA': {
+    spreadsheetKey: 'MAIN',
+    sheetName: 'GIGANTOGRAFIA',
+    label: 'Fiscalización Publicidad / Gigantografía',
+    icon: 'campaign',
+    keyCol: 'ID',
+    labelCol: 'NOMBRE LOCAL',
+    hasPdfBot: true,
+    formColumns: [
+      'INSPECTOR', 'FECHA HORA', 'TIPO DE INTERVENCION', 'TIPO FISCALIZACION',
+      'EMAIL', 'TELEFONO', 'DIRECCION', 'NOMBRE LOCAL',
+      'NOMBRE DUEÑO O RAZON SOCIAL', 'RUT', 'PRODUCTOS QUE VENDE', 'GIRO',
+      'METRAJE DE LA PUBLICIDAD', 'PUBLICIDAD LUMINOSA', 'PAGA PUBLICIDAD',
+      'OBSERVACIONES FISCALIZACION', 'UBICACION', 'INTERVENCION',
+      'OTROS ANTECEDENTES', 'FOTO 1', 'FOTO 2', 'FOTO 3', 'FIRMA'
+    ],
+    tableColumns: [
+      'FECHA HORA', 'INSPECTOR', 'NOMBRE LOCAL', 'DIRECCION',
+      'METRAJE DE LA PUBLICIDAD', 'PAGA PUBLICIDAD', 'PDF'
+    ],
+    columns: [
+      { name: 'ID', type: 'Text', isKey: true, initial: 'UNIQUEID', hiddenInForm: true },
+      { name: 'INSPECTOR', type: 'Ref', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
+      { name: 'FECHA HORA', type: 'DateTime', initial: 'NOW' },
+      { name: 'TIPO DE INTERVENCION', type: 'EnumList', values: ['Fiscalización de rutina', 'Denuncia ciudadana', 'Inspección por reincidencia', 'Operativo conjunto', 'Control nocturno', 'Control de patentes', 'Otro', 'Control de Publicidad'] },
+      { name: 'TIPO FISCALIZACION', type: 'EnumList', values: ['Infraestructura', 'Infracción cursada', 'Clausura', 'Notificación', 'Citación al Juzgado', 'Advertencia verbal', 'Decomiso', 'Otro'] },
+      { name: 'DIRECCION', type: 'Text' },
+      { name: 'NOMBRE LOCAL', type: 'Text' },
+      { name: 'NOMBRE DUEÑO O RAZON SOCIAL', type: 'Text' },
+      { name: 'RUT', type: 'Text' },
+      { name: 'PRODUCTOS QUE VENDE', type: 'EnumList', values: ['Alimentos', 'Botillería', 'Restaurante', 'Comida rápida', 'Ferretería', 'Ropa', 'Minimarket', 'Taller mecánico', 'Servicios', 'Otro'] },
+      { name: 'GIRO', type: 'EnumList', values: ['Comercial', 'Industrial', 'Alcoholes', 'Profesional', 'Microempresa familiar', 'Permiso provisorio', 'Sin patente'] },
+      { name: 'METRAJE DE LA PUBLICIDAD', type: 'Text' },
+      { name: 'PUBLICIDAD LUMINOSA', type: 'EnumList', values: ['SI', 'NO'] },
+      { name: 'PAGA PUBLICIDAD', type: 'EnumList', values: ['SI', 'NO', 'ATRASADA', 'VENCIDA', 'CONVENIO MUNICIPAL', 'PENDIENTE'] },
+      { name: 'OBSERVACIONES FISCALIZACION', type: 'LongText' },
+      { name: 'UBICACION', type: 'Location' },
+      { name: 'INTERVENCION', type: 'Text' },
+      { name: 'OTROS ANTECEDENTES', type: 'LongText' },
+      { name: 'FOTO 1', type: 'Image' },
+      { name: 'FOTO 2', type: 'Image' },
+      { name: 'FOTO 3', type: 'Image' },
+      { name: 'FIRMA', type: 'Signature' },
+      { name: 'PDF', type: 'File', readOnly: true },
+      { name: 'EMAIL', type: 'Email' },
+      { name: 'TELEFONO', type: 'Phone' }
+    ]
+  },
+
+  'PATENTES EN MORA': {
+    spreadsheetKey: 'MAIN',
+    sheetName: 'PATENTES EN MORA',
+    label: 'Patentes en Mora',
+    icon: 'payments',
+    keyCol: 'ID',
+    labelCol: 'NOMBRE LOCAL COMERCIAL',
+    hasPdfBot: true,
+    tableColumns: [
+      'NUMERO', 'NOMBRE LOCAL COMERCIAL', 'PATENTE', 'ROL',
+      'ESTADO PATENTE', 'VALOR PATENTE', 'FISCALIZADOR', 'FECHA FISCALIZACION'
+    ],
+    columns: [
+      { name: 'ID', type: 'Text', isKey: true, initial: 'UNIQUEID', hiddenInForm: true },
+      { name: 'NUMERO', type: 'Text' },
+      { name: 'NOMBRE LOCAL COMERCIAL', type: 'Text' },
+      { name: 'PATENTE', type: 'Text' },
+      { name: 'ROL', type: 'Text' },
+      { name: 'DIRECCION', type: 'Location' },
+      { name: 'ESTADO PATENTE', type: 'Enum', values: ['AL DIA', 'EN MORA'] },
+      { name: 'VALOR PATENTE', type: 'Price' },
+      { name: 'FECHA FISCALIZACION', type: 'DateTime', initial: 'NOW' },
+      { name: 'FISCALIZADOR', type: 'Ref', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
+      { name: 'OBSERVACIONES', type: 'LongText' },
+      { name: 'EMAIL', type: 'Email' },
+      { name: 'TELEFONO', type: 'Phone' }
+    ]
+  },
+
+  'REPORTE': {
+    spreadsheetKey: 'MAIN',
+    sheetName: 'REPORTE',
+    label: 'Reportes a Jefatura',
+    icon: 'assignment',
+    keyCol: 'ID',
+    labelCol: 'FUNCIONARIO',
+    hasPdfBot: true,
+    tableColumns: ['FECHA HORA', 'FUNCIONARIO', 'A QUIEN LE INFORMA', 'REPORTE', 'PDF'],
+    columns: [
+      { name: 'ID', type: 'Text', isKey: true, initial: 'UNIQUEID', hiddenInForm: true },
+      { name: 'FUNCIONARIO', type: 'Ref', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
+      { name: 'FECHA HORA', type: 'DateTime', initial: 'NOW' },
+      { name: 'REPORTE', type: 'LongText' },
+      { name: 'A QUIEN LE INFORMA', type: 'EnumList', values: ['DAVID HERNANDEZ', 'ALVARO NAVARRO', 'JUAN PLAZA', 'CRISTOPHER MACIEL', 'CENCOO / BRAVO', 'JEFE DE TURNO'] },
+      { name: 'UBICACION', type: 'Location' },
+      { name: 'FOTO 1', type: 'Image' },
+      { name: 'FOTO 2', type: 'Image' },
+      { name: 'FIRMA', type: 'Signature' },
+      { name: 'PDF', type: 'File', readOnly: true }
+    ]
+  },
+
+  'ASISTENCIA': {
+    spreadsheetKey: 'MAIN',
+    sheetName: 'ASISTENCIA',
+    label: 'Registro Ferias Libres / Feriantes',
+    icon: 'storefront',
+    keyCol: 'ID',
+    labelCol: 'NOMBRE DUEÑO',
+    hasPdfBot: false,
+    defaultSort: { column: 'N° Puesto', asc: true },
+    tableColumns: ['N° Puesto', 'NOMBRE DUEÑO', 'DIA', 'FERIA', 'RUT DUEÑO', 'PATENTE', 'GIRO'],
+    columns: [
+      { name: 'ID', type: 'Text', isKey: true, initial: 'UNIQUEID', hiddenInForm: true },
+      { name: 'FECHA', type: 'DateTime', initial: 'NOW' },
+      { name: 'DIA', type: 'Enum', values: ['MARTES', 'MIERCOLES', 'JUEVES', 'VIERNES', 'SABADO', 'DOMINGO'] },
+      { name: 'NOMBRE DUEÑO', type: 'Text' },
+      { name: 'RUT DUEÑO', type: 'Text' },
+      { name: 'PATENTE', type: 'Enum', values: ['SI POSEE', 'NO POSEE'] },
+      { name: 'Foto patente', type: 'Image' },
+      { name: 'OBSERVACIONES', type: 'LongText' },
+      { name: 'N° Puesto', type: 'Number' },
+      { name: 'FOTO DUEÑO', type: 'Image' },
+      { name: 'ROL', type: 'Text' },
+      { name: 'GIRO', type: 'Enum', values: ['AMBULANTE', 'COMERCIAL', 'PROVISORIO', 'INDUSTRIAL', 'ALCOHOLES', 'FERIAS LIBRE VTA AL DETALLE', 'MICRO EMPRESA', 'OTRO'] },
+      { name: 'FERIA', type: 'Enum', values: ['MODELO', 'LAS PRADERAS', 'MALLOQUITO', 'MANUEL GONZALES', 'LOS GUINDOS'] },
+      { name: 'FOTO CARNET AYUDANTE', displayName: 'Foto Ayudante 1', type: 'Image' },
+      { name: 'FOTO CARNET AYUDANTE_15', displayName: 'Foto Ayudante 2', type: 'Image' },
+      { name: 'FOTO CARNET AYUDANTE_16', displayName: 'Foto Ayudante 3', type: 'Image' },
+      { name: 'UBICACION', type: 'Location' },
+      { name: 'PDF', type: 'File', readOnly: true },
+      { name: 'VISTA', type: 'Text', hiddenInForm: true }
+    ]
+  },
+
+  'SEMANA PEÑAFLORINA': {
+    spreadsheetKey: 'MAIN',
+    sheetName: 'SEMANA PEÑAFLORINA',
+    label: 'Semana Peñaflorina',
+    icon: 'festival',
+    keyCol: 'ID',
+    labelCol: 'CONTROLADO POR',
+    hasPdfBot: false,
+    tableColumns: ['FECHA HORA', 'CONTROLADO POR', 'ESTADO DE PAGO', 'OBSERVACIONES'],
+    columns: [
+      { name: 'ID', type: 'Text', isKey: true, initial: 'UNIQUEID', hiddenInForm: true },
+      { name: 'CONTROLADO POR', type: 'Text' },
+      { name: 'FECHA HORA', type: 'DateTime', initial: 'NOW' },
+      { name: 'ESTADO DE PAGO', type: 'Enum', values: ['NO PAGA', 'PAGA DESPUES', 'SOLO VIERNES', 'SOLO SABADO', 'SOLO DOMINGO', 'VIERNES Y SABADO', 'SABADO Y DOMINGO', 'TODOS LOS DIAS', 'VIERNES Y DOMINGO'] },
+      { name: 'FOTO CARNET', type: 'Image' },
+      { name: 'FOTO VENTA', displayName: 'FOTO QUE VENDE', type: 'Image' },
+      { name: 'FOTO PATENTE', type: 'Image' },
+      { name: 'UBICACION', type: 'Location' },
+      { name: 'FIRMA', type: 'Signature' },
+      { name: 'OBSERVACIONES', type: 'LongText' }
+    ]
+  },
+
+  'Hoja 1': {
+    spreadsheetKey: 'DEUDAS',
+    sheetName: 'Hoja 1',
+    label: 'Notificaciones por Deudas',
+    icon: 'notifications_active',
+    keyCol: '_RowNumber',
+    labelCol: 'LOCAL COMERCIAL',
+    hasPdfBot: false,
+    tableColumns: ['N° NOTIFICACION', 'LOCAL COMERCIAL', 'DIRECCION', 'FECHA DE NOTIFICACION', 'FECHA DE TERMINO', 'DIAS RESTANTES'],
+    columns: [
+      { name: 'N° NOTIFICACION', type: 'Number' },
+      { name: 'DIRECCION', type: 'Text' },
+      { name: 'LOCAL COMERCIAL', type: 'LongText' },
+      { name: 'FECHA DE NOTIFICACION', type: 'DateTime', initial: 'NOW' },
+      { name: 'FECHA DE TERMINO', type: 'Date', initial: 'TODAY' },
+      { name: 'DIAS RESTANTES', type: 'Text', readOnly: true, formula: 'DAYS_REMAINING' }
+    ]
+  },
+
+  'FUNCIONARIO': {
+    spreadsheetKey: 'MAIN',
+    sheetName: 'FUNCIONARIO',
+    label: 'Funcionarios / Inspectores',
+    icon: 'badge',
+    keyCol: 'NOMBRE',
+    labelCol: 'NOMBRE',
+    hasPdfBot: false,
+    tableColumns: ['ID', 'NOMBRE', 'ROL'],
+    columns: [
+      { name: 'ID', type: 'Text', initial: 'UNIQUEID' },
+      { name: 'NOMBRE', type: 'Text', isKey: true },
+      { name: 'IMAGEN', type: 'Image' },
+      { name: 'ROL', type: 'Text' }
+    ]
+  },
+
+  'DOCUMENTOS': {
+    spreadsheetKey: 'MAIN',
+    sheetName: 'DOCUMENTOS',
+    label: 'Documentos / Drive',
+    icon: 'folder_shared',
+    keyCol: 'IR',
+    labelCol: 'IR',
+    hasPdfBot: false,
+    tableColumns: ['IR', 'LINK'],
+    columns: [
+      { name: 'ID', type: 'Text', initial: 'UNIQUEID', hiddenInForm: true },
+      { name: 'IR', type: 'Text', isKey: true },
+      { name: 'LINK', type: 'Url' },
+      { name: 'IMAGEN', type: 'Image' }
+    ]
+  },
+
+  // Tablas de navegación de menú heredadas de AppSheet
+  'MENU': { spreadsheetKey: 'MAIN', sheetName: 'MENU', keyCol: 'ID MENU', isNavTable: true, columns: [{ name: 'ID', type: 'Text' }, { name: 'ID MENU', type: 'Text' }, { name: 'IMAGEN', type: 'Image' }, { name: 'VISTA', type: 'Text' }] },
+  'SUBMENU': { spreadsheetKey: 'MAIN', sheetName: 'SUBMENU', keyCol: 'ID SUBMENU', isNavTable: true, columns: [{ name: 'ID', type: 'Text' }, { name: 'ID SUBMENU', type: 'Text' }, { name: 'IMAGEN', type: 'Image' }, { name: 'VISTA', type: 'Text' }] },
+  'SUBMENU 2': { spreadsheetKey: 'MAIN', sheetName: 'SUBMENU 2', keyCol: 'ID SUBMENU', isNavTable: true, columns: [{ name: 'ID', type: 'Text' }, { name: 'ID SUBMENU', type: 'Text' }, { name: 'IMAGEN', type: 'Image' }, { name: 'VISTA', type: 'Text' }] },
+  'SUBMENU 3': { spreadsheetKey: 'MAIN', sheetName: 'SUBMENU 3', keyCol: 'ID SUBMENU', isNavTable: true, columns: [{ name: 'ID', type: 'Text' }, { name: 'ID SUBMENU', type: 'Text' }, { name: 'IMAGEN', type: 'Image' }, { name: 'VISTA', type: 'Text' }] },
+  'LISTADOS': { spreadsheetKey: 'MAIN', sheetName: 'LISTADOS', keyCol: 'ID TABLA', isNavTable: true, columns: [{ name: 'ID', type: 'Text' }, { name: 'ID TABLA', type: 'Text' }, { name: 'IMAGEN', type: 'Image' }, { name: 'VISTA', type: 'Text' }] },
+  'FERIAS LIBRES': { spreadsheetKey: 'MAIN', sheetName: 'FERIAS LIBRES', keyCol: 'ID FERIAS', isNavTable: true, columns: [{ name: 'ID', type: 'Text' }, { name: 'ID FERIAS', type: 'Text' }, { name: 'IMAGEN', type: 'Image' }, { name: 'VISTA', type: 'Text' }] }
+};
+
+/**
+ * Mapeo de nombres de vistas de AppSheet -> Acciones/Vistas en la Web App
+ * Permite que los menús leídos desde Google Sheets naveguen exactamente igual que en AppSheet.
+ */
+var APPSHEET_VIEW_MAP = {
+  'MENU': { kind: 'menu', table: 'MENU', title: 'Menú Principal' },
+  'SUBMENU': { kind: 'menu', table: 'SUBMENU', title: 'Submenú' },
+  'SUB MENU 2': { kind: 'menu', table: 'SUBMENU 2', title: 'Submenú 2' },
+  'SUB MENU 4': { kind: 'menu', table: 'SUBMENU 3', title: 'Submenú 3' },
+  'LISTAS': { kind: 'menu', table: 'LISTADOS', title: 'Listados' },
+  'FERIAS LIBRES': { kind: 'menu', table: 'FERIAS LIBRES', title: 'Ferias Libres' },
+  'DRIVE': { kind: 'links', table: 'DOCUMENTOS', title: 'Documentos Drive' },
+  'FIS. COMERCIAL': { kind: 'form', table: 'COMERCIO', title: 'Fiscalización Comercial' },
+  'Fis. Fuera de Horarios': { kind: 'form', table: 'FUERA DE HORA', title: 'Fiscalización Fuera de Horario' },
+  'FIS. PUBLICIDAD': { kind: 'form', table: 'GIGANTOGRAFIA', title: 'Fiscalización Publicidad' },
+  'PATENTES EN DEUDA': { kind: 'form', table: 'PATENTES EN MORA', title: 'Patentes en Mora' },
+  'REPORTE': { kind: 'form', table: 'REPORTE', title: 'Nuevo Reporte a Jefatura' },
+  'REGISTRO FERIA': { kind: 'form', table: 'ASISTENCIA', title: 'Registro Feria Libre' },
+  'LISTA EDITABLE COMERCIO': { kind: 'table', table: 'COMERCIO', title: 'Lista Editable Comercio' },
+  'COMERCIO FUERA DE HORA': { kind: 'table', table: 'FUERA DE HORA', title: 'Comercio Fuera de Hora' },
+  'PUBLICIDAD': { kind: 'table', table: 'GIGANTOGRAFIA', title: 'Publicidad / Gigantografía' },
+  'LISTADO DE FERIANTES': { kind: 'table', table: 'ASISTENCIA', title: 'Listado de Feriantes' },
+  'SEGUIMIENTOS DE MOROSOS': { kind: 'table', table: 'PATENTES EN MORA', title: 'Seguimiento de Morosos' },
+  'DOCUMENTOS FISCALIZADOS': { kind: 'table', table: 'COMERCIO', title: 'Documentos Fiscalizados' },
+  'SEMANA PEÑAFLORINA': { kind: 'table', table: 'SEMANA PEÑAFLORINA', title: 'Semana Peñaflorina' },
+  'New View': { kind: 'table', table: 'Hoja 1', title: 'Notificaciones por Deudas' },
+  'FISCALIZACIONES COMERCIALES': { kind: 'map', table: 'COMERCIO', title: 'Mapa de Fiscalizaciones' },
+  'DASHBOARD': { kind: 'dashboard', title: 'Dashboard Estadístico' }
+};
+
+
+    var STORAGE_KEY = 'inspector_comercial_preview_v1';
+    var defaultDb = {
+      'FUNCIONARIO': [
+        { _RowNumber: 2, ID: 'F01', NOMBRE: 'CRISTOPHER MACIEL', ROL: 'Administrador / Inspector' },
+        { _RowNumber: 3, ID: 'F02', NOMBRE: 'DAVID HERNANDEZ', ROL: 'Jefatura Seguridad Pública' },
+        { _RowNumber: 4, ID: 'F03', NOMBRE: 'LUIS ZAMORANO', ROL: 'Inspector Comercial' },
+        { _RowNumber: 5, ID: 'F04', NOMBRE: 'NICOLAS ZAMORANO', ROL: 'Inspector Comercial' },
+        { _RowNumber: 6, ID: 'F05', NOMBRE: 'TAMARA MARTINEZ', ROL: 'Inspectora Comercial' }
+      ],
+      'COMERCIO': [
+        { _RowNumber: 2, ID: 'COM001', INSPECTOR: 'CRISTOPHER MACIEL', 'FECHA HORA': '19/11/2026 10:15', 'TIPO DE INTERVENCION': 'Fiscalización de rutina', 'TIPO FISCALIZACION': 'Inspección', DIRECCION: 'Av. Vicuña Mackenna 1850, Peñaflor', 'NOMBRE LOCAL': 'Minimarket El Parque', 'NOMBRE DUEÑO O RAZON SOCIAL': 'Juan Pérez Soto', RUT: '12.345.678-9', 'PRODUCTOS QUE VENDE': 'Minimarket , Alimentos', GIRO: 'COMERCIAL', 'DOCUMENTO FISCALIZADO': 'Patente comercial , Permiso municipal', 'CUENTA CON PATENTE': 'SI', 'EXHIBE PATENTE': 'SI', 'PERMISO AL DIA': 'SI', 'OBSERVACIONES FISCALIZACION': 'Documentación vigente y visible.', UBICACION: '-33.6063, -70.8764', TELEFONO: '+56987654321', EMAIL: 'contacto@elparque.cl' },
+        { _RowNumber: 3, ID: 'COM002', INSPECTOR: 'LUIS ZAMORANO', 'FECHA HORA': '19/11/2026 11:30', 'TIPO DE INTERVENCION': 'Control de patentes', 'TIPO FISCALIZACION': 'Notificación', DIRECCION: '21 de Mayo 432, Peñaflor', 'NOMBRE LOCAL': 'Botillería Central', 'NOMBRE DUEÑO O RAZON SOCIAL': 'Comercial Central Ltda.', RUT: '76.543.210-K', 'PRODUCTOS QUE VENDE': 'Botillería', GIRO: 'ALCOHOLES', 'DOCUMENTO FISCALIZADO': 'Patente comercial', 'CUENTA CON PATENTE': 'ATRASADA', 'EXHIBE PATENTE': 'NO', 'PERMISO AL DIA': 'VENCIDO', 'OBSERVACIONES FISCALIZACION': 'Se cursa notificación por patente atrasada.', UBICACION: '-33.6085, -70.8812', TELEFONO: '+56911223344' },
+        { _RowNumber: 4, ID: 'COM003', INSPECTOR: 'TAMARA MARTINEZ', 'FECHA HORA': '18/11/2026 16:40', 'TIPO DE INTERVENCION': 'Denuncia ciudadana', 'TIPO FISCALIZACION': 'Advertencia verbal', DIRECCION: 'Alcalde Luis Araya Cereceda 910, Peñaflor', 'NOMBRE LOCAL': 'Comida Rápida Express', 'NOMBRE DUEÑO O RAZON SOCIAL': 'María González', RUT: '15.987.654-3', 'PRODUCTOS QUE VENDE': 'Comida rápida', GIRO: 'PERMISO PROVISORIO', 'DOCUMENTO FISCALIZADO': 'Resolución sanitaria', 'CUENTA CON PATENTE': 'EN TRAMITE', 'EXHIBE PATENTE': 'NO CORRESPONDE', 'PERMISO AL DIA': 'EN TRAMITE', UBICACION: '-33.6031, -70.8720' }
+      ],
+      'FUERA DE HORA': [
+        { _RowNumber: 2, ID: 'FH001', INSPECTOR: 'NICOLAS ZAMORANO', 'FECHA HORA': '18/11/2026 23:20', 'TIPO DE INTERVENCION': 'Control nocturno', 'TIPO FISCALIZACION': 'Infracción cursada', DIRECCION: 'Av. Vicuña Mackenna 2100', 'NOMBRE LOCAL': 'Pub Nocturno Peñaflor', RUT: '77.111.222-3', GIRO: 'Alcoholes', 'CUENTA CON PATENTE': 'SI', 'PERMISO AL DIA': 'si', UBICACION: '-33.6098, -70.8745' }
+      ],
+      'GIGANTOGRAFIA': [
+        { _RowNumber: 2, ID: 'GIG001', INSPECTOR: 'CRISTOPHER MACIEL', 'FECHA HORA': '19/11/2026 09:45', 'TIPO DE INTERVENCION': 'Control de Publicidad', 'TIPO FISCALIZACION': 'Notificación', DIRECCION: 'Av. Vicuña Mackenna 1500', 'NOMBRE LOCAL': 'Ferretería Cordillera', 'METRAJE DE LA PUBLICIDAD': '4m x 2m (8 m2)', 'PUBLICIDAD LUMINOSA': 'SI', 'PAGA PUBLICIDAD': 'PENDIENTE', UBICACION: '-33.6050, -70.8790' }
+      ],
+      'PATENTES EN MORA': [
+        { _RowNumber: 2, ID: 'PM001', NUMERO: '1045', 'NOMBRE LOCAL COMERCIAL': 'Botillería Central', PATENTE: '4-1045', ROL: '2026-1045', DIRECCION: '-33.6085, -70.8812', 'ESTADO PATENTE': 'EN MORA', 'VALOR PATENTE': 285000, 'FECHA FISCALIZACION': '19/11/2026 11:30', FISCALIZADOR: 'LUIS ZAMORANO' },
+        { _RowNumber: 3, ID: 'PM002', NUMERO: '1098', 'NOMBRE LOCAL COMERCIAL': 'Taller Mecánico Sur', PATENTE: '2-1098', ROL: '2026-1098', DIRECCION: '-33.6110, -70.8830', 'ESTADO PATENTE': 'EN MORA', 'VALOR PATENTE': 195000, 'FECHA FISCALIZACION': '18/11/2026 15:00', FISCALIZADOR: 'CRISTOPHER MACIEL' },
+        { _RowNumber: 4, ID: 'PM003', NUMERO: '1120', 'NOMBRE LOCAL COMERCIAL': 'Minimarket El Parque', PATENTE: '2-1120', ROL: '2026-1120', DIRECCION: '-33.6063, -70.8764', 'ESTADO PATENTE': 'AL DIA', 'VALOR PATENTE': 150000, 'FECHA FISCALIZACION': '19/11/2026 10:15', FISCALIZADOR: 'TAMARA MARTINEZ' }
+      ],
+      'REPORTE': [
+        { _RowNumber: 2, ID: 'REP001', FUNCIONARIO: 'CRISTOPHER MACIEL', 'FECHA HORA': '19/11/2026 12:00', REPORTE: 'Operativo comercial realizado en sector centro sin incidentes.', 'A QUIEN LE INFORMA': 'DAVID HERNANDEZ , CENCOO / BRAVO', UBICACION: '-33.6063, -70.8764' }
+      ],
+      'ASISTENCIA': [
+        { _RowNumber: 2, ID: 'FER001', FECHA: '19/11/2026 08:30', DIA: 'JUEVES', 'NOMBRE DUEÑO': 'Pedro Morales', 'RUT DUEÑO': '11.222.333-4', PATENTE: 'SI POSEE', 'N° Puesto': 12, ROL: 'F-012', GIRO: 'FERIAS LIBRE VTA AL DETALLE', FERIA: 'MODELO', UBICACION: '-33.6042, -70.8705' }
+      ],
+      'SEMANA PEÑAFLORINA': [],
+      'Hoja 1': [
+        { _RowNumber: 2, 'N° NOTIFICACION': 101, DIRECCION: '21 de Mayo 432, Peñaflor', 'LOCAL COMERCIAL': 'Botillería Central', 'FECHA DE NOTIFICACION': '15/11/2026 11:00', 'FECHA DE TERMINO': '2026-11-25', 'DIAS RESTANTES': '6' }
+      ],
+      'DOCUMENTOS': [
+        { _RowNumber: 2, ID: 'D1', IR: 'Carpeta Drive Seguridad Pública', LINK: 'https://drive.google.com' }
+      ],
+      'MENU': [], 'SUBMENU': [], 'SUBMENU 2': [], 'SUBMENU 3': [], 'LISTADOS': [], 'FERIAS LIBRES': []
+    };
+
+    function loadDb() {
+      try {
+        var raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) return JSON.parse(raw);
+      } catch(e) {}
+      return JSON.parse(JSON.stringify(defaultDb));
+    }
+    function saveDb(db) {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(db)); } catch(e) {}
+    }
+
+    var mockServer = {
+      apiGetBootstrap: function() {
+        var db = loadDb();
+        return {
+          authorized: true,
+          user: { email: 'cristopher.maciel@penaflor.cl (Vista Previa GitHub)', isAuthorized: true },
+          config: { appName: APP_CONFIG.APP_NAME, subtitle: APP_CONFIG.SUBTITLE + ' (Demo GitHub)', creator: APP_CONFIG.CREATOR, contact: APP_CONFIG.CONTACT, primaryColor: APP_CONFIG.PRIMARY_COLOR },
+          schemas: TABLE_SCHEMAS,
+          viewMap: APPSHEET_VIEW_MAP,
+          funcionarios: db.FUNCIONARIO.map(function(f){ return { id: f.ID, nombre: f.NOMBRE, rol: f.ROL, imagen: f.IMAGEN || '' }; }),
+          navTables: { MENU: [], SUBMENU: [], 'SUBMENU 2': [], 'SUBMENU 3': [], LISTADOS: [], 'FERIAS LIBRES': [], DOCUMENTOS: db.DOCUMENTOS },
+          driveFolders: {
+            root: { url: 'https://drive.google.com' },
+            fotos: { url: 'https://drive.google.com' },
+            firmas: { url: 'https://drive.google.com' },
+            pdfs: { url: 'https://drive.google.com' },
+            excel: { url: 'https://drive.google.com' }
+          },
+          dailyBackupEnabled: true
+        };
+      },
+      apiGetTableRows: function(tableName) {
+        var db = loadDb();
+        var rows = db[tableName] || [];
+        var schema = TABLE_SCHEMAS[tableName] || { columns: [] };
+        var summary = {};
+        if (tableName === 'PATENTES EN MORA') {
+          summary.totalPatentesMorosas = rows.reduce(function(acc, r) {
+            return String(r['ESTADO PATENTE']).toUpperCase() === 'EN MORA' ? acc + (Number(r['VALOR PATENTE']) || 0) : acc;
+          }, 0);
+        }
+        return { tableName: tableName, headers: schema.columns.map(function(c){ return c.name; }), rows: rows, summary: summary };
+      },
+      apiSaveRecord: function(tableName, recordData) {
+        var db = loadDb();
+        db[tableName] = db[tableName] || [];
+        if (recordData._RowNumber) {
+          var idx = db[tableName].findIndex(function(r){ return Number(r._RowNumber) === Number(recordData._RowNumber); });
+          if (idx !== -1) db[tableName][idx] = Object.assign({}, db[tableName][idx], recordData);
+        } else {
+          recordData._RowNumber = db[tableName].length + 2;
+          if (!recordData.ID) recordData.ID = 'DEMO-' + Math.random().toString(36).slice(2, 7).toUpperCase();
+          if (!recordData['FECHA HORA']) recordData['FECHA HORA'] = new Date().toLocaleString('es-CL');
+          db[tableName].unshift(recordData);
+        }
+        saveDb(db);
+        return { ok: true, isEdit: false, record: recordData, pdf: null };
+      },
+      apiDeleteRecord: function(tableName, rowNumber) {
+        var db = loadDb();
+        db[tableName] = (db[tableName] || []).filter(function(r){ return Number(r._RowNumber) !== Number(rowNumber); });
+        saveDb(db);
+        return { ok: true };
+      },
+      apiRegeneratePdf: function() {
+        return { ok: true, pdf: { url: 'https://drive.google.com' } };
+      },
+      apiGetDashboardStats: function() {
+        var db = loadDb();
+        var countBy = function(arr, col) {
+          var m = {};
+          (arr || []).forEach(function(r){ var k = String(r[col] || 'Sin especificar'); m[k] = (m[k] || 0) + 1; });
+          return Object.keys(m).map(function(k){ return { label: k, value: m[k] }; }).sort(function(a,b){ return b.value - a.value; });
+        };
+        var mora = db['PATENTES EN MORA'] || [];
+        var totalMora = 0, moraPorEstado = {};
+        mora.forEach(function(r){
+          var e = String(r['ESTADO PATENTE'] || 'Sin estado');
+          var v = Number(r['VALOR PATENTE']) || 0;
+          moraPorEstado[e] = (moraPorEstado[e] || 0) + v;
+          if (e.toUpperCase() === 'EN MORA') totalMora += v;
+        });
+        return {
+          kpis: {
+            totalComercio: (db['COMERCIO'] || []).length,
+            totalFueraHora: (db['FUERA DE HORA'] || []).length,
+            totalPublicidad: (db['GIGANTOGRAFIA'] || []).length,
+            totalMoraCount: mora.length,
+            totalMoraMonto: totalMora,
+            totalReportes: (db['REPORTE'] || []).length,
+            totalFeriantes: (db['ASISTENCIA'] || []).length
+          },
+          charts: {
+            topPublicidad: countBy(db['GIGANTOGRAFIA'], 'INSPECTOR'),
+            topFiscalizador: countBy(db['COMERCIO'], 'INSPECTOR'),
+            topFueraHora: countBy(db['FUERA DE HORA'], 'INSPECTOR'),
+            permisoAlDia: countBy(db['COMERCIO'], 'PERMISO AL DIA'),
+            valorPatentesMora: Object.keys(moraPorEstado).map(function(k){ return { label: k, value: moraPorEstado[k] }; }),
+            totalesPatentesMora: countBy(mora, 'ESTADO PATENTE')
+          }
+        };
+      },
+      apiGetMapPoints: function(tableName) {
+        var db = loadDb();
+        var pts = [];
+        (db[tableName] || []).forEach(function(r){
+          var m = String(r.UBICACION || r.DIRECCION || '').match(/(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/);
+          if (m) pts.push({ lat: parseFloat(m[1]), lng: parseFloat(m[2]), title: r['NOMBRE LOCAL'] || r['NOMBRE LOCAL COMERCIAL'] || r['NOMBRE DUEÑO'] || r.FUNCIONARIO || 'Registro', subtitle: r.DIRECCION || '', inspector: r.INSPECTOR || r.FISCALIZADOR || r.FUNCIONARIO || '', fecha: r['FECHA HORA'] || r.FECHA || '' });
+        });
+        return pts;
+      },
+      apiRunExcelBackup: function() {
+        return { timestamp: new Date().toLocaleString('es-CL'), files: [{ ok: true, name: 'INSPECTOR_COMERCIAL_DEMO.xlsx' }, { ok: true, name: 'NOTIFICACIONES_DEUDAS_DEMO.xlsx' }] };
+      },
+      apiListExcelBackups: function() {
+        return [
+          { name: 'INSPECTOR_COMERCIAL_2026-11-19_1300.xlsx', date: '19/11/2026 13:00', sizeKb: 148, downloadUrl: '#' },
+          { name: 'NOTIFICACIONES_DEUDAS_2026-11-19_1300.xlsx', date: '19/11/2026 13:00', sizeKb: 42, downloadUrl: '#' }
+        ];
+      },
+      apiToggleDailyBackup: function(enable) {
+        return { ok: true, message: enable ? 'Respaldo diario activado (23:00 hrs).' : 'Respaldo diario desactivado.' };
+      }
+    };
+
+    function makeRunner(okCb, errCb) {
+      var runner = {
+        withSuccessHandler: function(fn) { return makeRunner(fn, errCb); },
+        withFailureHandler: function(fn) { return makeRunner(okCb, fn); }
+      };
+      Object.keys(mockServer).forEach(function(fnName) {
+        runner[fnName] = function() {
+          var args = Array.prototype.slice.call(arguments);
+          setTimeout(function() {
+            try {
+              var res = mockServer[fnName].apply(null, args);
+              if (okCb) okCb(res);
+            } catch (e) {
+              if (errCb) errCb(e);
+            }
+          }, 120);
+        };
+      });
+      return runner;
+    }
+
+    window.google = { script: { run: makeRunner(null, null) } };
+  })();
+}
+</script>
+
+<script>
+/**
+ * ============================================================================
+ * INSPECTOR COMERCIAL - CONTROLADOR FRONTEND SPA
+ * ============================================================================
+ */
+const App = {
+  boot: null,
+  history: [],
+  currentRoute: null,
+  currentTableData: null,
+  mediaUploads: {},
+  signaturePads: {},
+  chartInstances: [],
+  leafletMap: null,
+
+  init() {
+    this.showLoader('Cargando INSPECTOR COMERCIAL...');
+    google.script.run
+      .withSuccessHandler(res => {
+        this.hideLoader();
+        if (!res || !res.authorized) {
+          document.getElementById('appView').innerHTML =
+            '<div class="card"><h2>Acceso restringido</h2><p>Tu cuenta (' +
+            this.esc(res && res.user ? res.user.email : '') +
+            ') no está autorizada para usar Inspector Comercial.</p></div>';
+          return;
+        }
+        this.boot = res;
+        document.getElementById('userEmailLabel').textContent = res.user.email || 'Usuario Municipal';
+        this.openTab('menu');
+      })
+      .withFailureHandler(err => {
+        this.hideLoader();
+        this.toast('Error al iniciar: ' + err.message);
+      })
+      .apiGetBootstrap();
+  },
+
+  // ==========================================================================
+  // NAVEGACIÓN
+  // ==========================================================================
+  openTab(tab) {
+    this.history = [];
+    document.querySelectorAll('[data-tab]').forEach(el => {
+      el.classList.toggle('active', el.getAttribute('data-tab') === tab);
+    });
+
+    if (tab === 'menu') {
+      this.navigate({ kind: 'menu', table: 'MENU', title: 'Menú Principal' }, false);
+    } else if (tab === 'forms') {
+      this.navigate({ kind: 'formsHub', title: 'Formularios de Fiscalización' }, false);
+    } else if (tab === 'tables') {
+      this.navigate({ kind: 'tablesHub', title: 'Listados y Registros' }, false);
+    } else if (tab === 'map') {
+      this.navigate({ kind: 'map', table: 'COMERCIO', title: 'Fiscalizaciones Comerciales (Mapa)' }, false);
+    } else if (tab === 'dashboard') {
+      this.navigate({ kind: 'dashboard', title: 'Dashboard Estadístico' }, false);
+    } else if (tab === 'backup') {
+      this.navigate({ kind: 'backup', title: 'Respaldo Excel y Carpetas Drive' }, false);
+    }
+  },
+
+  navigate(route, pushHistory = true) {
+    if (pushHistory && this.currentRoute) {
+      this.history.push(this.currentRoute);
+    }
+    this.currentRoute = route;
+    document.getElementById('headerTitle').textContent = route.title || this.boot.config.appName;
+    document.getElementById('btnBack').classList.toggle('hidden', this.history.length === 0);
+
+    switch (route.kind) {
+      case 'menu': this.renderMenuTable(route.table); break;
+      case 'formsHub': this.renderFormsHub(); break;
+      case 'tablesHub': this.renderTablesHub(); break;
+      case 'form': this.renderForm(route.table, route.record || null); break;
+      case 'table': this.renderTable(route.table); break;
+      case 'links': this.renderDocumentLinks(); break;
+      case 'map': this.renderMap(route.table || 'COMERCIO'); break;
+      case 'dashboard': this.renderDashboard(); break;
+      case 'backup': this.renderBackupPanel(); break;
+      default: this.renderMenuTable('MENU');
+    }
+  },
+
+  goBack() {
+    if (this.history.length === 0) return;
+    const prev = this.history.pop();
+    this.navigate(prev, false);
+  },
+
+  refreshCurrent() {
+    if (!this.currentRoute) return;
+    this.navigate(this.currentRoute, false);
+    this.toast('Datos sincronizados');
+  },
+
+  openAppSheetViewName(viewName) {
+    const mapped = this.boot.viewMap[viewName];
+    if (mapped) {
+      this.navigate(Object.assign({}, mapped));
+      return;
+    }
+    // Búsqueda flexible por nombre de tabla
+    if (this.boot.schemas[viewName]) {
+      this.navigate({ kind: 'table', table: viewName, title: this.boot.schemas[viewName].label || viewName });
+      return;
+    }
+    this.toast('Vista "' + viewName + '" no mapeada todavía.');
+  },
+
+  // ==========================================================================
+  // VISTAS DE MENÚ (DINÁMICAS DESDE GOOGLE SHEETS + ACCESOS DIRECTOS)
+  // ==========================================================================
+  renderMenuTable(tableName) {
+    const rows = (this.boot.navTables && this.boot.navTables[tableName]) || [];
+    const schema = this.boot.schemas[tableName] || {};
+    const labelKey = schema.keyCol || 'ID MENU';
+
+    let html = '<div class="section-header"><h2>' + this.esc(this.currentRoute.title) + '</h2></div>';
+
+    if (rows.length > 0) {
+      html += '<div class="gallery-grid">';
+      rows.forEach(r => {
+        const title = r[labelKey] || r['VISTA'] || 'Opción';
+        const vista = r['VISTA'] || '';
+        const img = r['IMAGEN'] || '';
+        const imgHtml = img && String(img).startsWith('http')
+          ? '<img class="card-thumb" src="' + this.esc(img) + '" alt="">'
+          : '<div class="card-icon"><span class="material-icons">dashboard_customize</span></div>';
+
+        html += '<div class="menu-card" onclick="App.openAppSheetViewName(\'' + this.escJs(vista) + '\')">' +
+          imgHtml +
+          '<div class="card-title">' + this.esc(title) + '</div>' +
+          '</div>';
+      });
+      html += '</div>';
+    }
+
+    // Siempre mostrar accesos rápidos completos en el Menú Principal
+    if (tableName === 'MENU') {
+      html += '<div class="section-header" style="margin-top:24px;"><h2>Accesos Directos</h2></div>';
+      html += this._buildQuickCardsHtml();
+    }
+
+    document.getElementById('appView').innerHTML = html;
+  },
+
+  _buildQuickCardsHtml() {
+    const quick = [
+      { title: 'Fis. Comercial', icon: 'store', route: { kind: 'form', table: 'COMERCIO', title: 'Fiscalización Comercial' } },
+      { title: 'Fis. Fuera de Horario', icon: 'schedule', route: { kind: 'form', table: 'FUERA DE HORA', title: 'Fiscalización Fuera de Horario' } },
+      { title: 'Fis. Publicidad', icon: 'campaign', route: { kind: 'form', table: 'GIGANTOGRAFIA', title: 'Fiscalización Publicidad' } },
+      { title: 'Patentes en Mora', icon: 'payments', route: { kind: 'form', table: 'PATENTES EN MORA', title: 'Patentes en Mora' } },
+      { title: 'Reporte a Jefatura', icon: 'assignment', route: { kind: 'form', table: 'REPORTE', title: 'Reporte a Jefatura' } },
+      { title: 'Registro Feria Libre', icon: 'storefront', route: { kind: 'form', table: 'ASISTENCIA', title: 'Registro Feria Libre' } },
+      { title: 'Semana Peñaflorina', icon: 'festival', route: { kind: 'form', table: 'SEMANA PEÑAFLORINA', title: 'Semana Peñaflorina' } },
+      { title: 'Notif. por Deudas', icon: 'notifications_active', route: { kind: 'table', table: 'Hoja 1', title: 'Notificaciones por Deudas' } },
+      { title: 'Mapa Fiscalizaciones', icon: 'map', route: { kind: 'map', table: 'COMERCIO', title: 'Mapa de Fiscalizaciones' } },
+      { title: 'Dashboard', icon: 'bar_chart', route: { kind: 'dashboard', title: 'Dashboard Estadístico' } },
+      { title: 'Documentos Drive', icon: 'folder_shared', route: { kind: 'links', table: 'DOCUMENTOS', title: 'Documentos Drive' } },
+      { title: 'Respaldo Excel', icon: 'cloud_download', route: { kind: 'backup', title: 'Respaldo Excel y Drive' } }
+    ];
+
+    let html = '<div class="gallery-grid">';
+    quick.forEach((q, idx) => {
+      html += '<div class="menu-card" onclick=\'App.navigate(' + JSON.stringify(q.route) + ')\'>' +
+        '<div class="card-icon"><span class="material-icons">' + q.icon + '</span></div>' +
+        '<div class="card-title">' + this.esc(q.title) + '</div>' +
+        '</div>';
+    });
+    html += '</div>';
+    return html;
+  },
+
+  renderFormsHub() {
+    const formTables = ['COMERCIO', 'FUERA DE HORA', 'GIGANTOGRAFIA', 'PATENTES EN MORA', 'REPORTE', 'ASISTENCIA', 'SEMANA PEÑAFLORINA', 'Hoja 1', 'FUNCIONARIO'];
+    let html = '<div class="section-header"><h2>Formularios de Ingreso</h2></div><div class="gallery-grid">';
+    formTables.forEach(t => {
+      const s = this.boot.schemas[t];
+      html += '<div class="menu-card" onclick="App.navigate({kind:\'form\',table:\'' + this.escJs(t) + '\',title:\'' + this.escJs(s.label) + '\'})">' +
+        '<div class="card-icon"><span class="material-icons">' + (s.icon || 'edit_note') + '</span></div>' +
+        '<div class="card-title">' + this.esc(s.label) + '</div>' +
+        (s.hasPdfBot ? '<span class="badge badge-blue">Auto PDF</span>' : '') +
+        '</div>';
+    });
+    html += '</div>';
+    document.getElementById('appView').innerHTML = html;
+  },
+
+  renderTablesHub() {
+    const dataTables = ['COMERCIO', 'FUERA DE HORA', 'GIGANTOGRAFIA', 'PATENTES EN MORA', 'REPORTE', 'ASISTENCIA', 'SEMANA PEÑAFLORINA', 'Hoja 1', 'FUNCIONARIO', 'DOCUMENTOS'];
+    let html = '<div class="section-header"><h2>Listados y Registros</h2></div><div class="gallery-grid">';
+    dataTables.forEach(t => {
+      const s = this.boot.schemas[t];
+      html += '<div class="menu-card" onclick="App.navigate({kind:\'table\',table:\'' + this.escJs(t) + '\',title:\'' + this.escJs(s.label) + '\'})">' +
+        '<div class="card-icon"><span class="material-icons">' + (s.icon || 'table_rows') + '</span></div>' +
+        '<div class="card-title">' + this.esc(s.label) + '</div>' +
+        '</div>';
+    });
+    html += '</div>';
+    document.getElementById('appView').innerHTML = html;
+  },
+
+  renderDocumentLinks() {
+    const rows = (this.boot.navTables && this.boot.navTables['DOCUMENTOS']) || [];
+    let html = '<div class="section-header"><h2>Documentos y Enlaces Drive</h2>' +
+      '<button class="btn btn-primary btn-sm" onclick="App.navigate({kind:\'form\',table:\'DOCUMENTOS\',title:\'Nuevo Enlace Drive\'})">+ Agregar enlace</button>' +
+      '</div><div class="gallery-grid">';
+    if (rows.length === 0) {
+      html += '<div class="card" style="grid-column:1/-1;">No hay enlaces registrados en la hoja DOCUMENTOS.</div>';
+    } else {
+      rows.forEach(r => {
+        html += '<a class="menu-card" style="text-decoration:none;" href="' + this.esc(r['LINK'] || '#') + '" target="_blank">' +
+          '<div class="card-icon"><span class="material-icons">open_in_new</span></div>' +
+          '<div class="card-title">' + this.esc(r['IR'] || 'Documento') + '</div>' +
+          '</a>';
+      });
+    }
+    html += '</div>';
+    document.getElementById('appView').innerHTML = html;
+  },
+
+  // ==========================================================================
+  // FORMULARIO DINÁMICO (CON FOTOS, FIRMA CANVAS, GPS Y ENUMLIST)
+  // ==========================================================================
+  renderForm(tableName, existingRecord) {
+    const schema = this.boot.schemas[tableName];
+    const isEdit = Boolean(existingRecord && existingRecord._RowNumber);
+    this.mediaUploads = {};
+    this.signaturePads = {};
+
+    const orderedColNames = schema.formColumns || schema.columns.map(c => c.name);
+    const colMap = {};
+    schema.columns.forEach(c => colMap[c.name] = c);
+
+    let fieldsHtml = '';
+    orderedColNames.forEach(colName => {
+      const col = colMap[colName];
+      if (!col || col.hiddenInForm || col.readOnly) return;
+
+      const label = col.displayName || col.name;
+      const val = existingRecord && existingRecord[col.name] !== undefined ? existingRecord[col.name] : '';
+      const fieldId = 'fld_' + col.name.replace(/[^a-zA-Z0-9]/g, '_');
+
+      let inputHtml = '';
+      let extraClass = '';
+
+      if (col.type === 'Ref' && col.refTable === 'FUNCIONARIO') {
+        inputHtml = '<select class="form-control" data-col="' + this.esc(col.name) + '"><option value="">-- Seleccionar Inspector --</option>';
+        (this.boot.funcionarios || []).forEach(f => {
+          const sel = String(val) === String(f.nombre) ? ' selected' : '';
+          inputHtml += '<option value="' + this.esc(f.nombre) + '"' + sel + '>' + this.esc(f.nombre) + (f.rol ? ' (' + this.esc(f.rol) + ')' : '') + '</option>';
+        });
+        inputHtml += '</select>';
+      } else if (col.type === 'Enum') {
+        inputHtml = '<select class="form-control" data-col="' + this.esc(col.name) + '"><option value="">-- Seleccionar --</option>';
+        (col.values || []).forEach(opt => {
+          const sel = String(val).toUpperCase() === String(opt).toUpperCase() ? ' selected' : '';
+          inputHtml += '<option value="' + this.esc(opt) + '"' + sel + '>' + this.esc(opt) + '</option>';
+        });
+        inputHtml += '</select>';
+      } else if (col.type === 'EnumList') {
+        extraClass = 'full-width';
+        const selectedArr = String(val || '').split(',').map(s => s.trim()).filter(Boolean);
+        inputHtml = '<div class="chip-group" data-enumlist="' + this.esc(col.name) + '">';
+        (col.values || []).forEach(opt => {
+          const isSel = selectedArr.indexOf(opt) !== -1;
+          inputHtml += '<span class="chip' + (isSel ? ' selected' : '') + '" onclick="this.classList.toggle(\'selected\')" data-val="' + this.esc(opt) + '">' + this.esc(opt) + '</span>';
+        });
+        inputHtml += '</div>';
+      } else if (col.type === 'LongText') {
+        extraClass = 'full-width';
+        inputHtml = '<textarea class="form-control" data-col="' + this.esc(col.name) + '">' + this.esc(val) + '</textarea>';
+      } else if (col.type === 'Location') {
+        inputHtml = '<div class="loc-row">' +
+          '<input type="text" class="form-control" id="' + fieldId + '" data-col="' + this.esc(col.name) + '" value="' + this.esc(val) + '" placeholder="-33.6063, -70.8764">' +
+          '<button type="button" class="btn btn-outline btn-sm" onclick="App.captureGPS(\'' + fieldId + '\')" title="Capturar GPS"><span class="material-icons">my_location</span></button>' +
+          '</div>';
+      } else if (col.type === 'Image') {
+        inputHtml = '<div class="photo-box">' +
+          '<input type="file" accept="image/*" capture="environment" onchange="App.handlePhotoSelect(this, \'' + this.escJs(col.name) + '\', \'' + fieldId + '_prev\')">' +
+          '<img id="' + fieldId + '_prev" class="photo-preview" src="' + (val && String(val).startsWith('http') ? this.esc(val) : '') + '" style="' + (val && String(val).startsWith('http') ? 'display:inline-block;' : '') + '">' +
+          '</div>';
+      } else if (col.type === 'Signature') {
+        extraClass = 'full-width';
+        inputHtml = '<canvas id="' + fieldId + '_sig" class="sig-pad" data-sig-col="' + this.esc(col.name) + '"></canvas>' +
+          '<div style="margin-top:6px;display:flex;justify-content:flex-end;">' +
+          '<button type="button" class="btn btn-outline btn-sm" onclick="App.clearSignature(\'' + fieldId + '_sig\')">Limpiar Firma</button>' +
+          '</div>';
+      } else if (col.type === 'Number' || col.type === 'Price') {
+        inputHtml = '<input type="number" step="any" class="form-control" data-col="' + this.esc(col.name) + '" value="' + this.esc(val) + '">';
+      } else if (col.type === 'Date') {
+        inputHtml = '<input type="date" class="form-control" data-col="' + this.esc(col.name) + '" value="' + this.esc(val) + '">';
+      } else if (col.type === 'Email') {
+        inputHtml = '<input type="email" class="form-control" data-col="' + this.esc(col.name) + '" value="' + this.esc(val) + '">';
+      } else if (col.type === 'Phone') {
+        inputHtml = '<input type="tel" class="form-control" data-col="' + this.esc(col.name) + '" value="' + this.esc(val) + '">';
+      } else if (col.type === 'Url') {
+        inputHtml = '<input type="url" class="form-control" data-col="' + this.esc(col.name) + '" value="' + this.esc(val) + '">';
+      } else {
+        inputHtml = '<input type="text" class="form-control" data-col="' + this.esc(col.name) + '" value="' + this.esc(val) + '">';
+      }
+
+      fieldsHtml += '<div class="form-field ' + extraClass + '"><label>' + this.esc(label) + '</label>' + inputHtml + '</div>';
+    });
+
+    const html = '<div class="section-header">' +
+      '<h2>' + (isEdit ? 'Editar: ' : 'Nuevo: ') + this.esc(schema.label) + '</h2>' +
+      '<button class="btn btn-outline btn-sm" onclick="App.navigate({kind:\'table\',table:\'' + this.escJs(tableName) + '\',title:\'' + this.escJs(schema.label) + '\'})">Ver Listado</button>' +
+      '</div>' +
+      '<form id="dynamicForm" class="card" onsubmit="App.submitForm(event, \'' + this.escJs(tableName) + '\', ' + (isEdit ? Number(existingRecord._RowNumber) : 'null') + ', \'' + this.escJs(isEdit ? (existingRecord[schema.keyCol] || '') : '') + '\')">' +
+      '<div class="form-grid">' + fieldsHtml + '</div>' +
+      '<div style="margin-top:20px;display:flex;gap:10px;justify-content:flex-end;">' +
+      '<button type="button" class="btn btn-outline" onclick="App.goBack()">CANCELAR</button>' +
+      '<button type="submit" class="btn btn-primary"><span class="material-icons">save</span> GUARDAR' + (!isEdit && schema.hasPdfBot ? ' Y GENERAR PDF' : '') + '</button>' +
+      '</div></form>';
+
+    document.getElementById('appView').innerHTML = html;
+    this.initSignaturePads();
+  },
+
+  captureGPS(inputId) {
+    if (!navigator.geolocation) {
+      this.toast('Tu navegador no soporta GPS.');
+      return;
+    }
+    this.toast('Obteniendo ubicación GPS...');
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        const coords = pos.coords.latitude.toFixed(6) + ', ' + pos.coords.longitude.toFixed(6);
+        document.getElementById(inputId).value = coords;
+        this.toast('Ubicación capturada: ' + coords);
+      },
+      err => this.toast('Error GPS: ' + err.message),
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  },
+
+  handlePhotoSelect(input, colName, previewId) {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        // Comprimir imagen a máx 1280px para subida rápida a Google Drive
+        const maxDim = 1280;
+        let w = img.width, h = img.height;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) { h = Math.round(h * maxDim / w); w = maxDim; }
+          else { w = Math.round(w * maxDim / h); h = maxDim; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        const compressed = canvas.toDataURL('image/jpeg', 0.78);
+        this.mediaUploads[colName] = compressed;
+        const prev = document.getElementById(previewId);
+        if (prev) {
+          prev.src = compressed;
+          prev.style.display = 'inline-block';
+        }
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  },
+
+  initSignaturePads() {
+    document.querySelectorAll('canvas.sig-pad').forEach(canvas => {
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width || 500;
+      canvas.height = 170;
+      const ctx = canvas.getContext('2d');
+      ctx.lineWidth = 2.4;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = '#111827';
+
+      let drawing = false;
+      let hasInk = false;
+
+      const getPos = e => {
+        const r = canvas.getBoundingClientRect();
+        const t = e.touches ? e.touches[0] : e;
+        return { x: (t.clientX - r.left) * (canvas.width / r.width), y: (t.clientY - r.top) * (canvas.height / r.height) };
+      };
+
+      const start = e => { drawing = true; hasInk = true; const p = getPos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); e.preventDefault(); };
+      const move = e => { if (!drawing) return; const p = getPos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); e.preventDefault(); };
+      const end = () => { drawing = false; };
+
+      canvas.addEventListener('mousedown', start);
+      canvas.addEventListener('mousemove', move);
+      window.addEventListener('mouseup', end);
+      canvas.addEventListener('touchstart', start, { passive: false });
+      canvas.addEventListener('touchmove', move, { passive: false });
+      canvas.addEventListener('touchend', end);
+
+      this.signaturePads[canvas.id] = {
+        col: canvas.getAttribute('data-sig-col'),
+        canvas,
+        hasInk: () => hasInk,
+        clear: () => { ctx.clearRect(0, 0, canvas.width, canvas.height); hasInk = false; }
+      };
+    });
+  },
+
+  clearSignature(canvasId) {
+    if (this.signaturePads[canvasId]) this.signaturePads[canvasId].clear();
+  },
+
+  submitForm(event, tableName, rowNumber, existingKey) {
+    event.preventDefault();
+    const form = document.getElementById('dynamicForm');
+    const schema = this.boot.schemas[tableName];
+    const record = {};
+
+    if (rowNumber) record._RowNumber = rowNumber;
+    if (existingKey && schema.keyCol && schema.keyCol !== '_RowNumber') {
+      record[schema.keyCol] = existingKey;
+    }
+
+    form.querySelectorAll('[data-col]').forEach(el => {
+      record[el.getAttribute('data-col')] = el.value;
+    });
+
+    form.querySelectorAll('[data-enumlist]').forEach(group => {
+      const col = group.getAttribute('data-enumlist');
+      const selected = Array.from(group.querySelectorAll('.chip.selected')).map(c => c.getAttribute('data-val'));
+      record[col] = selected.join(' , ');
+    });
+
+    // Adjuntar firmas dibujadas
+    Object.keys(this.signaturePads).forEach(id => {
+      const pad = this.signaturePads[id];
+      if (pad.hasInk()) {
+        this.mediaUploads[pad.col] = pad.canvas.toDataURL('image/png');
+      }
+    });
+
+    this.showLoader('Guardando registro, subiendo archivos a Drive y generando PDF...');
+    google.script.run
+      .withSuccessHandler(res => {
+        this.hideLoader();
+        if (res && res.ok) {
+          let msg = res.isEdit ? 'Registro actualizado correctamente.' : 'Registro guardado en Google Sheets y Drive.';
+          if (res.pdf && res.pdf.url) {
+            msg += ' PDF generado automáticamente.';
+          }
+          this.toast(msg);
+          this.navigate({ kind: 'table', table: tableName, title: schema.label });
+        }
+      })
+      .withFailureHandler(err => {
+        this.hideLoader();
+        this.toast('Error al guardar: ' + err.message);
+      })
+      .apiSaveRecord(tableName, record, this.mediaUploads);
+  },
+
+  // ==========================================================================
+  // VISTAS DE TABLA / LISTADOS
+  // ==========================================================================
+  renderTable(tableName) {
+    const schema = this.boot.schemas[tableName];
+    this.showLoader('Cargando ' + schema.label + '...');
+    google.script.run
+      .withSuccessHandler(data => {
+        this.hideLoader();
+        this.currentTableData = data;
+        this._paintTable(tableName, data, '');
+      })
+      .withFailureHandler(err => {
+        this.hideLoader();
+        this.toast('Error cargando tabla: ' + err.message);
+      })
+      .apiGetTableRows(tableName);
+  },
+
+  _paintTable(tableName, data, query) {
+    const schema = this.boot.schemas[tableName];
+    const cols = schema.tableColumns || schema.columns.slice(0, 6).map(c => c.name);
+    const q = (query || '').toLowerCase();
+
+    const filtered = (data.rows || []).filter(r => {
+      if (!q) return true;
+      return Object.values(r).some(v => String(v || '').toLowerCase().indexOf(q) !== -1);
+    });
+
+    let summaryBanner = '';
+    if (tableName === 'PATENTES EN MORA' && data.summary) {
+      summaryBanner = '<div class="kpi-grid"><div class="kpi-card">' +
+        '<div class="kpi-label">TOTAL DE PATENTES MOROSAS</div>' +
+        '<div class="kpi-value">
+</body>
+</html>
+ + Number(data.summary.totalPatentesMorosas || 0).toLocaleString('es-CL') + '</div>' +
+        '</div><div class="kpi-card">' +
+        '<div class="kpi-label">REGISTROS TOTALES</div>' +
+        '<div class="kpi-value">' + filtered.length + '</div>' +
+        '</div></div>';
+    }
+
+    let html = '<div class="section-header">' +
+      '<h2>' + this.esc(schema.label) + ' <span class="badge badge-blue">' + filtered.length + '</span></h2>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+      '<button class="btn btn-outline btn-sm" onclick="App.exportCurrentTableCSV(\'' + this.escJs(tableName) + '\')"><span class="material-icons" style="font-size:16px;">download</span> Exportar CSV/Excel</button>' +
+      '<button class="btn btn-primary btn-sm" onclick="App.navigate({kind:\'form\',table:\'' + this.escJs(tableName) + '\',title:\'' + this.escJs(schema.label) + '\'})"><span class="material-icons" style="font-size:16px;">add</span> NUEVO</button>' +
+      '</div></div>' +
+      summaryBanner +
+      '<div class="toolbar">' +
+      '<input type="search" class="form-control search-input" placeholder="Buscar por local, RUT, inspector, dirección..." value="' + this.esc(query) + '" oninput="App._paintTable(\'' + this.escJs(tableName) + '\', App.currentTableData, this.value)">' +
+      '</div>';
+
+    if (filtered.length === 0) {
+      html += '<div class="card" style="text-align:center;color:var(--muted);">No se encontraron registros.</div>';
+    } else {
+      html += '<div class="table-wrap"><table class="data-table"><thead><tr>';
+      cols.forEach(c => html += '<th>' + this.esc(c) + '</th>');
+      html += '<th>ACCIONES</th></tr></thead><tbody>';
+
+      filtered.slice(0, 200).forEach(r => {
+        html += '<tr>';
+        cols.forEach(c => {
+          const val = r[c] !== undefined ? r[c] : '';
+          if (c === 'PDF' && String(val).startsWith('http')) {
+            html += '<td><a class="badge badge-green" href="' + this.esc(val) + '" target="_blank">Abrir PDF</a></td>';
+          } else if (c === 'ESTADO PATENTE' || c === 'CUENTA CON PATENTE' || c === 'PERMISO AL DIA') {
+            const up = String(val).toUpperCase();
+            const cls = (up === 'SI' || up === 'AL DIA') ? 'badge-green' : (up === 'NO' || up === 'EN MORA' || up === 'VENCIDO') ? 'badge-red' : 'badge-amber';
+            html += '<td><span class="badge ' + cls + '">' + this.esc(val || '-') + '</span></td>';
+          } else {
+            html += '<td>' + this.esc(String(val).substring(0, 60)) + '</td>';
+          }
+        });
+        html += '<td style="white-space:nowrap;">' +
+          '<button class="btn btn-outline btn-sm" onclick="App.openDetailModal(\'' + this.escJs(tableName) + '\',' + r._RowNumber + ')">Ver</button> ' +
+          '<button class="btn btn-outline btn-sm" onclick="App.editRow(\'' + this.escJs(tableName) + '\',' + r._RowNumber + ')">Editar</button>' +
+          '</td></tr>';
+      });
+      html += '</tbody></table></div>';
+    }
+
+    document.getElementById('appView').innerHTML = html;
+  },
+
+  editRow(tableName, rowNumber) {
+    const row = (this.currentTableData.rows || []).find(r => Number(r._RowNumber) === Number(rowNumber));
+    if (!row) return;
+    const schema = this.boot.schemas[tableName];
+    this.navigate({ kind: 'form', table: tableName, title: 'Editar ' + schema.label, record: row });
+  },
+
+  openDetailModal(tableName, rowNumber) {
+    const row = (this.currentTableData.rows || []).find(r => Number(r._RowNumber) === Number(rowNumber));
+    if (!row) return;
+    const schema = this.boot.schemas[tableName];
+
+    document.getElementById('modalTitle').textContent = schema.label + ' — ' + (row[schema.labelCol] || row.ID || '#' + rowNumber);
+    let body = '';
+
+    // Acciones rápidas (Llamar, Correo, Mapa, PDF)
+    body += '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">';
+    if (row['TELEFONO']) body += '<a class="btn btn-outline btn-sm" href="tel:' + this.esc(row['TELEFONO']) + '">📞 Llamar</a>';
+    if (row['EMAIL']) body += '<a class="btn btn-outline btn-sm" href="mailto:' + this.esc(row['EMAIL']) + '">✉️ Correo</a>';
+    if (row['UBICACION']) body += '<a class="btn btn-outline btn-sm" target="_blank" href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(row['UBICACION']) + '">📍 Ver Mapa</a>';
+    if (row['PDF'] && String(row['PDF']).startsWith('http')) {
+      body += '<a class="btn btn-success btn-sm" target="_blank" href="' + this.esc(row['PDF']) + '">📄 Abrir PDF</a>';
+    }
+    if (schema.hasPdfBot) {
+      body += '<button class="btn btn-primary btn-sm" onclick="App.regeneratePdf(\'' + this.escJs(tableName) + '\',' + rowNumber + ')">🔄 Generar PDF</button>';
+    }
+    body += '<button class="btn btn-danger btn-sm" onclick="App.deleteRow(\'' + this.escJs(tableName) + '\',' + rowNumber + ')">🗑️ Eliminar</button>';
+    body += '</div>';
+
+    schema.columns.forEach(col => {
+      const val = row[col.name];
+      if (val === undefined || val === null || val === '') return;
+      let valHtml = this.esc(val);
+      if ((col.type === 'Image' || col.type === 'Signature' || col.type === 'File' || col.type === 'Url') && String(val).startsWith('http')) {
+        valHtml = '<a href="' + this.esc(val) + '" target="_blank" style="color:var(--primary);font-weight:500;">Abrir archivo en Drive ↗</a>';
+      }
+      body += '<div class="detail-row"><strong>' + this.esc(col.displayName || col.name) + '</strong><span>' + valHtml + '</span></div>';
+    });
+
+    document.getElementById('modalBody').innerHTML = body;
+    document.getElementById('detailModal').classList.add('open');
+  },
+
+  closeModal() {
+    document.getElementById('detailModal').classList.remove('open');
+  },
+
+  regeneratePdf(tableName, rowNumber) {
+    this.showLoader('Generando informe PDF en Drive...');
+    google.script.run
+      .withSuccessHandler(res => {
+        this.hideLoader();
+        this.closeModal();
+        this.toast('PDF generado y guardado en Drive.');
+        if (res && res.pdf && res.pdf.url) window.open(res.pdf.url, '_blank');
+        this.renderTable(tableName);
+      })
+      .withFailureHandler(err => {
+        this.hideLoader();
+        this.toast('Error PDF: ' + err.message);
+      })
+      .apiRegeneratePdf(tableName, rowNumber);
+  },
+
+  deleteRow(tableName, rowNumber) {
+    if (!confirm('¿Seguro que deseas borrar este registro? Esta acción no se puede deshacer.')) return;
+    this.showLoader('Eliminando registro...');
+    google.script.run
+      .withSuccessHandler(() => {
+        this.hideLoader();
+        this.closeModal();
+        this.toast('Registro eliminado.');
+        this.renderTable(tableName);
+      })
+      .withFailureHandler(err => {
+        this.hideLoader();
+        this.toast('Error al eliminar: ' + err.message);
+      })
+      .apiDeleteRecord(tableName, rowNumber);
+  },
+
+  exportCurrentTableCSV(tableName) {
+    if (!this.currentTableData || !this.currentTableData.rows) return;
+    const headers = this.currentTableData.headers;
+    const rows = this.currentTableData.rows;
+    const csvLines = [headers.map(h => '"' + String(h).replace(/"/g, '""') + '"').join(';')];
+    rows.forEach(r => {
+      csvLines.push(headers.map(h => '"' + String(r[h] || '').replace(/"/g, '""') + '"').join(';'));
+    });
+    const blob = new Blob(['\uFEFF' + csvLines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = tableName.replace(/\s+/g, '_') + '_' + new Date().toISOString().slice(0, 10) + '.csv';
+    a.click();
+  },
+
+  // ==========================================================================
+  // MAPA INTERACTIVO (FISCALIZACIONES COMERCIALES)
+  // ==========================================================================
+  renderMap(tableName) {
+    const tablesWithLoc = ['COMERCIO', 'FUERA DE HORA', 'GIGANTOGRAFIA', 'PATENTES EN MORA', 'ASISTENCIA', 'REPORTE', 'SEMANA PEÑAFLORINA'];
+    let opts = '';
+    tablesWithLoc.forEach(t => {
+      opts += '<option value="' + t + '"' + (t === tableName ? ' selected' : '') + '>' + this.esc(this.boot.schemas[t].label) + '</option>';
+    });
+
+    document.getElementById('appView').innerHTML =
+      '<div class="section-header"><h2>Mapa de Fiscalizaciones</h2>' +
+      '<select class="form-control" style="max-width:260px;" onchange="App.renderMap(this.value)">' + opts + '</select>' +
+      '</div><div id="mapContainer"></div>';
+
+    this.showLoader('Cargando ubicaciones GPS...');
+    google.script.run
+      .withSuccessHandler(points => {
+        this.hideLoader();
+        if (this.leafletMap) { this.leafletMap.remove(); this.leafletMap = null; }
+        this.leafletMap = L.map('mapContainer').setView([-33.6063, -70.8764], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '&copy; OpenStreetMap'
+        }).addTo(this.leafletMap);
+
+        const bounds = [];
+        (points || []).forEach(p => {
+          bounds.push([p.lat, p.lng]);
+          L.marker([p.lat, p.lng]).addTo(this.leafletMap)
+            .bindPopup('<strong>' + this.esc(p.title) + '</strong><br>' +
+              this.esc(p.subtitle) + '<br><small>Inspector: ' + this.esc(p.inspector) + ' | ' + this.esc(p.fecha) + '</small>');
+        });
+        if (bounds.length > 0) this.leafletMap.fitBounds(bounds, { padding: [30, 30] });
+        else this.toast('No se encontraron registros con coordenadas GPS en ' + tableName);
+      })
+      .withFailureHandler(err => {
+        this.hideLoader();
+        this.toast('Error mapa: ' + err.message);
+      })
+      .apiGetMapPoints(tableName);
+  },
+
+  // ==========================================================================
+  // DASHBOARD (6 GRÁFICOS EXACTOS DE APPSHEET)
+  // ==========================================================================
+  renderDashboard() {
+    this.showLoader('Calculando estadísticas del Dashboard...');
+    google.script.run
+      .withSuccessHandler(stats => {
+        this.hideLoader();
+        this.chartInstances.forEach(c => c.destroy());
+        this.chartInstances = [];
+
+        const k = stats.kpis;
+        const html = '<div class="section-header"><h2>Dashboard Estadístico</h2></div>' +
+          '<div class="kpi-grid">' +
+          '<div class="kpi-card"><div class="kpi-label">Fis. Comerciales</div><div class="kpi-value">' + k.totalComercio + '</div></div>' +
+          '<div class="kpi-card"><div class="kpi-label">Fuera de Horario</div><div class="kpi-value">' + k.totalFueraHora + '</div></div>' +
+          '<div class="kpi-card"><div class="kpi-label">Publicidad</div><div class="kpi-value">' + k.totalPublicidad + '</div></div>' +
+          '<div class="kpi-card"><div class="kpi-label">Patentes en Mora ($)</div><div class="kpi-value">
+</body>
+</html>
+ + Number(k.totalMoraMonto || 0).toLocaleString('es-CL') + '</div></div>' +
+          '<div class="kpi-card"><div class="kpi-label">Reportes Jefatura</div><div class="kpi-value">' + k.totalReportes + '</div></div>' +
+          '<div class="kpi-card"><div class="kpi-label">Feriantes Registrados</div><div class="kpi-value">' + k.totalFeriantes + '</div></div>' +
+          '</div>' +
+          '<div class="charts-grid">' +
+          '<div class="chart-card"><h3>TOP INSPECTOR FISCALIZADOR (Comercio)</h3><div class="chart-box"><canvas id="ch1"></canvas></div></div>' +
+          '<div class="chart-card"><h3>TOP INSPECTORES PUBLICIDAD</h3><div class="chart-box"><canvas id="ch2"></canvas></div></div>' +
+          '<div class="chart-card"><h3>TOP INSPECTORES FUERA DE HORA</h3><div class="chart-box"><canvas id="ch3"></canvas></div></div>' +
+          '<div class="chart-card"><h3>CUENTA CON SU PATENTE / PERMISO AL DÍA</h3><div class="chart-box"><canvas id="ch4"></canvas></div></div>' +
+          '<div class="chart-card"><h3>VALOR DE PATENTES EN MORA ($)</h3><div class="chart-box"><canvas id="ch5"></canvas></div></div>' +
+          '<div class="chart-card"><h3>TOTALES DE PATENTES MORA COMERCIALES</h3><div class="chart-box"><canvas id="ch6"></canvas></div></div>' +
+          '</div>';
+
+        document.getElementById('appView').innerHTML = html;
+
+        const palette = ['#0b7bde', '#12b76a', '#f79009', '#f04438', '#7a5af8', '#06aed4', '#ee46bc'];
+        const draw = (id, type, items, horizontal) => {
+          const ctx = document.getElementById(id);
+          if (!ctx) return;
+          const ch = new Chart(ctx, {
+            type,
+            data: {
+              labels: items.map(i => i.label),
+              datasets: [{
+                label: 'Cantidad / Monto',
+                data: items.map(i => i.value),
+                backgroundColor: type === 'doughnut' ? palette : '#0b7bde',
+                borderRadius: type === 'bar' ? 6 : 0
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              indexAxis: horizontal ? 'y' : 'x',
+              plugins: { legend: { display: type === 'doughnut', position: 'bottom' } }
+            }
+          });
+          this.chartInstances.push(ch);
+        };
+
+        draw('ch1', 'bar', stats.charts.topFiscalizador, false);
+        draw('ch2', 'bar', stats.charts.topPublicidad, false);
+        draw('ch3', 'bar', stats.charts.topFueraHora, true);
+        draw('ch4', 'doughnut', stats.charts.permisoAlDia, false);
+        draw('ch5', 'doughnut', stats.charts.valorPatentesMora, false);
+        draw('ch6', 'bar', stats.charts.totalesPatentesMora, false);
+      })
+      .withFailureHandler(err => {
+        this.hideLoader();
+        this.toast('Error Dashboard: ' + err.message);
+      })
+      .apiGetDashboardStats();
+  },
+
+  // ==========================================================================
+  // RESPALDO EXCEL Y CARPETAS INDEPENDIENTES EN DRIVE
+  // ==========================================================================
+  renderBackupPanel() {
+    const f = this.boot.driveFolders || {};
+    const html = '<div class="section-header"><h2>Respaldo Excel (.xlsx) y Carpetas Drive</h2></div>' +
+      '<div class="card">' +
+      '<h3 style="margin-top:0;">Carpetas Independientes en Google Drive</h3>' +
+      '<p style="color:var(--muted);font-size:13px;">Todos los archivos de INSPECTOR COMERCIAL se organizan automáticamente en carpetas separadas dentro de <strong>INSPECTOR_COMERCIAL_DRIVE</strong>:</p>' +
+      '<div class="gallery-grid">' +
+      '<a class="menu-card" style="text-decoration:none;" href="' + this.esc(f.root ? f.root.url : '#') + '" target="_blank"><div class="card-icon"><span class="material-icons">folder</span></div><div class="card-title">Carpeta Raíz App</div></a>' +
+      '<a class="menu-card" style="text-decoration:none;" href="' + this.esc(f.fotos ? f.fotos.url : '#') + '" target="_blank"><div class="card-icon"><span class="material-icons">photo_library</span></div><div class="card-title">FOTOS (por módulo/registro)</div></a>' +
+      '<a class="menu-card" style="text-decoration:none;" href="' + this.esc(f.firmas ? f.firmas.url : '#') + '" target="_blank"><div class="card-icon"><span class="material-icons">draw</span></div><div class="card-title">FIRMAS Digitales</div></a>' +
+      '<a class="menu-card" style="text-decoration:none;" href="' + this.esc(f.pdfs ? f.pdfs.url : '#') + '" target="_blank"><div class="card-icon"><span class="material-icons">picture_as_pdf</span></div><div class="card-title">DOCUMENTOS PDF (5 Bots)</div></a>' +
+      '<a class="menu-card" style="text-decoration:none;" href="' + this.esc(f.excel ? f.excel.url : '#') + '" target="_blank"><div class="card-icon"><span class="material-icons">table_view</span></div><div class="card-title">RESPALDOS EXCEL (.xlsx)</div></a>' +
+      '</div></div>' +
+      '<div class="card">' +
+      '<h3 style="margin-top:0;">Generar Respaldo en Excel (.xlsx)</h3>' +
+      '<p style="color:var(--muted);font-size:13px;">Exporta una copia completa en formato Microsoft Excel (.xlsx) de <strong>INSPECTOR COMERCIAL</strong> y <strong>REGISTRO DE NOTIFICACIONES POR DEUDAS</strong> directamente a tu carpeta de respaldos en Drive.</p>' +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">' +
+      '<button class="btn btn-primary" onclick="App.runExcelBackup()"><span class="material-icons">cloud_download</span> Generar Respaldo Excel Ahora</button>' +
+      '<button class="btn btn-outline" onclick="App.toggleDailyBackup(' + (!this.boot.dailyBackupEnabled) + ')">' +
+      (this.boot.dailyBackupEnabled ? '🔕 Desactivar Respaldo Diario (23:00)' : '⏰ Activar Respaldo Diario Automático (23:00)') +
+      '</button></div>' +
+      '<div id="backupListBox" style="margin-top:16px;">Cargando historial de respaldos...</div>' +
+      '</div>';
+
+    document.getElementById('appView').innerHTML = html;
+    this.loadBackupHistory();
+  },
+
+  loadBackupHistory() {
+    google.script.run
+      .withSuccessHandler(list => {
+        const box = document.getElementById('backupListBox');
+        if (!box) return;
+        if (!list || list.length === 0) {
+          box.innerHTML = '<p style="color:var(--muted);font-size:13px;">Aún no hay respaldos Excel generados.</p>';
+          return;
+        }
+        let html = '<div class="table-wrap"><table class="data-table"><thead><tr><th>Archivo Excel</th><th>Fecha</th><th>Tamaño</th><th>Acción</th></tr></thead><tbody>';
+        list.forEach(b => {
+          html += '<tr><td>' + this.esc(b.name) + '</td><td>' + this.esc(b.date) + '</td><td>' + b.sizeKb + ' KB</td>' +
+            '<td><a class="btn btn-outline btn-sm" href="' + this.esc(b.downloadUrl) + '" target="_blank">Descargar .xlsx</a></td></tr>';
+        });
+        html += '</tbody></table></div>';
+        box.innerHTML = html;
+      })
+      .apiListExcelBackups();
+  },
+
+  runExcelBackup() {
+    this.showLoader('Exportando ambas planillas a Excel (.xlsx) en Drive...');
+    google.script.run
+      .withSuccessHandler(res => {
+        this.hideLoader();
+        const okCount = (res.files || []).filter(f => f.ok).length;
+        this.toast('Respaldo Excel completado (' + okCount + ' archivo(s) .xlsx guardados en Drive).');
+        this.loadBackupHistory();
+      })
+      .withFailureHandler(err => {
+        this.hideLoader();
+        this.toast('Error respaldo Excel: ' + err.message);
+      })
+      .apiRunExcelBackup();
+  },
+
+  toggleDailyBackup(enable) {
+    this.showLoader('Actualizando programación automática...');
+    google.script.run
+      .withSuccessHandler(res => {
+        this.hideLoader();
+        this.boot.dailyBackupEnabled = enable;
+        this.toast(res.message);
+        this.renderBackupPanel();
+      })
+      .withFailureHandler(err => {
+        this.hideLoader();
+        this.toast('Error: ' + err.message);
+      })
+      .apiToggleDailyBackup(enable);
+  },
+
+  // ==========================================================================
+  // UTILIDADES UI
+  // ==========================================================================
+  showLoader(text) {
+    document.getElementById('loaderText').textContent = text || 'Procesando...';
+    document.getElementById('globalLoader').classList.add('open');
+  },
+  hideLoader() {
+    document.getElementById('globalLoader').classList.remove('open');
+  },
+  toast(msg) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(this._toastTimer);
+    this._toastTimer = setTimeout(() => el.classList.remove('show'), 4200);
+  },
+  esc(s) {
+    return String(s === undefined || s === null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  },
+  escJs(s) {
+    return String(s === undefined || s === null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  }
+};
+
+window.addEventListener('DOMContentLoaded', () => App.init());
+</script>
+
+</body>
+</html>
