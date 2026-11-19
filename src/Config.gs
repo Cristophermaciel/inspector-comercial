@@ -362,6 +362,29 @@ const TABLE_SCHEMAS = {
     ]
   },
 
+  'FERIAS NAVIDEÑAS': {
+    spreadsheetKey: 'MAIN',
+    sheetName: 'FERIAS NAVIDEÑAS',
+    label: 'Ferias Navideñas',
+    icon: 'card_giftcard',
+    keyCol: 'ID',
+    labelCol: 'CONTROLADO POR',
+    hasPdfBot: false,
+    tableColumns: ['FECHA HORA', 'CONTROLADO POR', 'ESTADO DE PAGO', 'OBSERVACIONES'],
+    columns: [
+      { name: 'ID', type: 'Text', isKey: true, initial: 'UNIQUEID', hiddenInForm: true },
+      { name: 'CONTROLADO POR', type: 'Text' },
+      { name: 'FECHA HORA', type: 'DateTime', initial: 'NOW' },
+      { name: 'ESTADO DE PAGO', type: 'Enum', values: ['NO PAGA', 'PAGA DESPUES', 'SOLO VIERNES', 'SOLO SABADO', 'SOLO DOMINGO', 'VIERNES Y SABADO', 'SABADO Y DOMINGO', 'TODOS LOS DIAS', 'VIERNES Y DOMINGO'] },
+      { name: 'FOTO CARNET', type: 'Image' },
+      { name: 'FOTO VENTA', displayName: 'FOTO QUE VENDE', type: 'Image' },
+      { name: 'FOTO PATENTE', type: 'Image' },
+      { name: 'UBICACION', type: 'Location' },
+      { name: 'FIRMA', type: 'Signature' },
+      { name: 'OBSERVACIONES', type: 'LongText' }
+    ]
+  },
+
   'Hoja 1': {
     spreadsheetKey: 'DEUDAS',
     sheetName: 'Hoja 1',
@@ -449,6 +472,7 @@ const APPSHEET_VIEW_MAP = {
   'SEGUIMIENTOS DE MOROSOS': { kind: 'table', table: 'PATENTES EN MORA', title: 'Seguimiento de Morosos' },
   'DOCUMENTOS FISCALIZADOS': { kind: 'table', table: 'COMERCIO', title: 'Documentos Fiscalizados' },
   'SEMANA PEÑAFLORINA': { kind: 'table', table: 'SEMANA PEÑAFLORINA', title: 'Semana Peñaflorina' },
+  'FERIAS NAVIDEÑAS': { kind: 'table', table: 'FERIAS NAVIDEÑAS', title: 'Ferias Navideñas' },
   'New View': { kind: 'table', table: 'Hoja 1', title: 'Notificaciones por Deudas' },
   'FISCALIZACIONES COMERCIALES': { kind: 'map', table: 'COMERCIO', title: 'Mapa de Fiscalizaciones' },
   'DASHBOARD': { kind: 'dashboard', title: 'Dashboard Estadístico' }

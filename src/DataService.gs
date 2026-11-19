@@ -15,8 +15,16 @@ const DataService = {
     const schema = TABLE_SCHEMAS[tableName];
     if (!schema) throw new Error('Tabla no encontrada en configuración: ' + tableName);
     const ss = this._getSpreadsheet(schema.spreadsheetKey);
-    const sheet = ss.getSheetByName(schema.sheetName);
-    if (!sheet) throw new Error('Hoja no encontrada en Google Sheets: ' + schema.sheetName);
+    let sheet = ss.getSheetByName(schema.sheetName);
+    if (!sheet) {
+      // Crear la hoja automáticamente con encabezados en orden exacto (ej. FERIAS NAVIDEÑAS)
+      sheet = ss.insertSheet(schema.sheetName);
+      const cols = schema.columns.map(c => c.name);
+      if (cols.length > 0) {
+        sheet.getRange(1, 1, 1, cols.length).setValues([cols]);
+        sheet.setFrozenRows(1);
+      }
+    }
     return { sheet, schema };
   },
 
@@ -332,6 +340,7 @@ const DataService = {
     const mora = this._safeReadRows('PATENTES EN MORA');
     const reportes = this._safeReadRows('REPORTE');
     const feriantes = this._safeReadRows('ASISTENCIA');
+    const feriasNavidenas = this._safeReadRows('FERIAS NAVIDEÑAS');
 
     const countBy = (arr, col) => {
       const map = {};
@@ -365,7 +374,8 @@ const DataService = {
         totalMoraMonto: totalMora,
         totalAlDiaMonto: totalAlDia,
         totalReportes: reportes.length,
-        totalFeriantes: feriantes.length
+        totalFeriantes: feriantes.length,
+        totalFeriasNavidenas: feriasNavidenas.length
       },
       charts: {
         topPublicidad: countBy(publicidad, 'INSPECTOR'),
