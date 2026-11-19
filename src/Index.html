@@ -2,25 +2,41 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title><?= appName ?></title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, viewport-fit=cover">
+  <meta name="theme-color" content="#0c347d">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Inspectores Peñaflor">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="icon" type="image/jpeg" href="./assets/logo-penaflor.jpg">
+  <link rel="apple-touch-icon" href="./assets/logo-penaflor.jpg">
+  <title>Departamento de Inspectores Comerciales - Peñaflor</title>
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <?!= include('Styles'); ?>
 </head>
 <body>
 
-  <!-- BARRA SUPERIOR -->
+  <!-- BARRA SUPERIOR INSTITUCIONAL -->
   <header class="topbar">
     <button id="btnBack" class="icon-btn hidden" onclick="App.goBack()" title="Volver">
       <span class="material-icons">arrow_back</span>
     </button>
-    <div class="topbar-title">
-      <h1 id="headerTitle"><?= appName ?></h1>
-      <small id="headerSubtitle"><?= subtitle ?></small>
+    <div class="topbar-logo-wrap">
+      <img class="topbar-logo" src="https://cristophermaciel.github.io/inspector-comercial/assets/logo-penaflor.jpg" onerror="this.src='./assets/logo-penaflor.jpg'" alt="Logo Peñaflor">
     </div>
+    <div class="topbar-title">
+      <h1 id="headerTitle">Departamento de Inspectores Comerciales</h1>
+      <small id="headerSubtitle">Seguridad Pública Municipalidad de Peñaflor</small>
+    </div>
+    <button id="btnInstallApp" class="install-pill" onclick="App.promptInstall()" title="Instalar en celular o escritorio">
+      <span class="material-icons">install_mobile</span>
+      <span class="install-label">Instalar</span>
+    </button>
     <button class="icon-btn" onclick="App.refreshCurrent()" title="Sincronizar">
       <span class="material-icons">sync</span>
     </button>
@@ -30,6 +46,12 @@
   <div class="app-shell">
     <!-- BARRA LATERAL DESKTOP -->
     <aside class="sidebar">
+      <div class="sidebar-brand">
+        <img src="https://cristophermaciel.github.io/inspector-comercial/assets/logo-penaflor.jpg" onerror="this.src='./assets/logo-penaflor.jpg'" alt="Peñaflor Inspecciones Comerciales">
+        <div class="dept-name">Departamento de Inspectores Comerciales</div>
+        <div class="dept-sub">Dirección de Seguridad Pública</div>
+      </div>
+
       <button class="sidebar-item active" data-tab="menu" onclick="App.openTab('menu')">
         <span class="material-icons">apps</span> Menú Principal
       </button>
@@ -37,21 +59,21 @@
         <span class="material-icons">edit_note</span> Formularios
       </button>
       <button class="sidebar-item" data-tab="tables" onclick="App.openTab('tables')">
-        <span class="material-icons">table_rows</span> Listados y Registros
+        <span class="material-icons">table_rows</span> Listados y Excel
       </button>
       <button class="sidebar-item" data-tab="map" onclick="App.openTab('map')">
         <span class="material-icons">map</span> Mapa Fiscalizaciones
       </button>
       <button class="sidebar-item" data-tab="dashboard" onclick="App.openTab('dashboard')">
-        <span class="material-icons">bar_chart</span> Dashboard
+        <span class="material-icons">bar_chart</span> Estadísticas / Dashboard
       </button>
       <div class="sidebar-divider"></div>
       <button class="sidebar-item" data-tab="backup" onclick="App.openTab('backup')">
-        <span class="material-icons">cloud_download</span> Respaldo Excel y Drive
+        <span class="material-icons">cloud_sync</span> Excel, Drive y Conexión
       </button>
       <div class="sidebar-divider"></div>
       <div class="sidebar-footer">
-        <div id="userEmailLabel">Conectando...</div>
+        <div id="userEmailLabel" style="font-weight:600;color:#0c347d;">Conectando...</div>
         <div>CREADOR CRISTOPHER MACIEL</div>
         <div>CONTACTO 1410</div>
       </div>
@@ -60,7 +82,7 @@
     <!-- ÁREA DE CONTENIDO DINÁMICO -->
     <main class="main-content" id="appView">
       <div class="card" style="text-align:center;padding:40px;">
-        Cargando Inspector Comercial...
+        Cargando Departamento de Inspectores Comerciales...
       </div>
     </main>
   </div>
@@ -77,18 +99,18 @@
       <span class="material-icons">table_rows</span>Listados
     </button>
     <button class="nav-btn" data-tab="dashboard" onclick="App.openTab('dashboard')">
-      <span class="material-icons">bar_chart</span>Dashboard
+      <span class="material-icons">bar_chart</span>Estadísticas
     </button>
     <button class="nav-btn" data-tab="backup" onclick="App.openTab('backup')">
-      <span class="material-icons">cloud_download</span>Respaldo
+      <span class="material-icons">cloud_sync</span>Excel/Drive
     </button>
   </nav>
 
-  <!-- MODAL DETALLE DE REGISTRO -->
+  <!-- MODAL DETALLE DE REGISTRO / INSTALACIÓN -->
   <div id="detailModal" class="modal-backdrop" onclick="if(event.target===this)App.closeModal()">
     <div class="modal-dialog">
       <div class="section-header" style="margin-bottom:10px;">
-        <h2 id="modalTitle" style="font-size:17px;">Detalle del Registro</h2>
+        <h2 id="modalTitle" style="font-size:17px;">Detalle</h2>
         <button class="btn btn-outline btn-sm" onclick="App.closeModal()">Cerrar</button>
       </div>
       <div id="modalBody"></div>
@@ -98,7 +120,7 @@
   <!-- LOADER GLOBAL -->
   <div id="globalLoader" class="loader-overlay">
     <div class="spinner"></div>
-    <div id="loaderText" style="font-weight:500;color:#0b7bde;">Procesando...</div>
+    <div id="loaderText" style="font-weight:600;color:#0c347d;">Procesando...</div>
   </div>
 
   <!-- NOTIFICACIÓN TOAST -->

@@ -223,22 +223,52 @@ const DataService = {
         }
       }
 
-      // 3. Escribir fila en Google Sheets respetando el orden exacto de encabezados
-      const rowValues = headers.map(h => {
-        if (!h) return '';
-        const val = recordData[h];
-        if (Array.isArray(val)) return val.join(' , ');
-        return val !== undefined && val !== null ? val : '';
+      // 3. Garantizar encabezados en orden exacto si la hoja estuviera vacía
+      const hasHeaders = headers.some(h => h !== '');
+      let finalHeaders = headers;
+      if (!hasHeaders) {
+        finalHeaders = schema.columns.map(c => c.name);
+        sheet.getRange(1, 1, 1, finalHeaders.length).setValues([finalHeaders]);
+      }
+
+      // Mapa rápido de definición de columnas (insensible a mayúsculas/espacios extra)
+      const colDefByNorm = {};
+      schema.columns.forEach(c => {
+        colDefByNorm[c.name.toUpperCase().trim()] = c;
       });
 
-      let targetRowNum;
-      if (isEdit) {
-        targetRowNum = Number(recordData._RowNumber);
-        sheet.getRange(targetRowNum, 1, 1, headers.length).setValues([rowValues]);
-      } else {
-        targetRowNum = sheet.getLastRow() + 1;
-        sheet.getRange(targetRowNum, 1, 1, headers.length).setValues([rowValues]);
-      }
+      // Mapa de valores ingresados normalizados para garantizar orden exacto en Excel/Sheets
+      const recordByNorm = {};
+      Object.keys(recordData).forEach(k => {
+        recordByNorm[k.toUpperCase().trim()] = recordData[k];
+      });
+
+      // Escribir cada celda en el orden exacto de la hoja respetando tipos numéricos/fórmulas para estadísticas
+      const targetRowNum = isEdit ? Number(recordData._RowNumber) : (sheet.getLastRow() + 1);
+      const rowValues = finalHeaders.map(h => {
+        if (!h) return '';
+        const norm = h.toUpperCase().trim();
+        const colDef = colDefByNorm[norm];
+
+        // Mantener fórmula de días restantes en Hoja 1 (Notificaciones por Deudas)
+        if (tableName === 'Hoja 1' && norm === 'DIAS RESTANTES') {
+          return '=INDIRECT("E"&ROW())-TODAY()';
+        }
+
+        let val = recordData[h] !== undefined ? recordData[h] : recordByNorm[norm];
+        if (Array.isArray(val)) return val.join(' , ');
+        if (val === undefined || val === null || val === '') return '';
+
+        // Guardar precios y números como valores numéricos reales (clave para estadísticas y tablas dinámicas Excel)
+        if (colDef && (colDef.type === 'Number' || colDef.type === 'Price')) {
+          const parsed = this._parseMoney(val);
+          return isNaN(parsed) ? val : parsed;
+        }
+
+        return val;
+      });
+
+      sheet.getRange(targetRowNum, 1, 1, finalHeaders.length).setValues([rowValues]);
 
       recordData._RowNumber = targetRowNum;
 

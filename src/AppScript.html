@@ -1,7 +1,7 @@
 <script>
 /**
  * ============================================================================
- * INSPECTOR COMERCIAL - CONTROLADOR FRONTEND SPA
+ * DEPARTAMENTO DE INSPECTORES COMERCIALES - CONTROLADOR FRONTEND SPA + PWA
  * ============================================================================
  */
 const App = {
@@ -13,9 +13,18 @@ const App = {
   signaturePads: {},
   chartInstances: [],
   leafletMap: null,
+  deferredInstallPrompt: null,
 
   init() {
-    this.showLoader('Cargando INSPECTOR COMERCIAL...');
+    this.setupPWA();
+    // Cerrar desplegables multi-selección al hacer clic fuera
+    document.addEventListener('click', e => {
+      if (!e.target.closest('.ms-dropdown')) {
+        document.querySelectorAll('.ms-dropdown.open').forEach(el => el.classList.remove('open'));
+      }
+    });
+
+    this.showLoader('Cargando Departamento de Inspectores Comerciales...');
     google.script.run
       .withSuccessHandler(res => {
         this.hideLoader();
@@ -23,7 +32,7 @@ const App = {
           document.getElementById('appView').innerHTML =
             '<div class="card"><h2>Acceso restringido</h2><p>Tu cuenta (' +
             this.esc(res && res.user ? res.user.email : '') +
-            ') no está autorizada para usar Inspector Comercial.</p></div>';
+            ') no está autorizada para usar esta aplicación.</p></div>';
           return;
         }
         this.boot = res;
@@ -38,6 +47,49 @@ const App = {
   },
 
   // ==========================================================================
+  // PWA INSTALABLE (MÓVIL ANDROID/iOS + ESCRITORIO WINDOWS/MAC)
+  // ==========================================================================
+  setupPWA() {
+    if ('serviceWorker' in navigator && location.protocol === 'https:') {
+      navigator.serviceWorker.register('./sw.js').catch(() => {});
+    }
+    window.addEventListener('beforeinstallprompt', e => {
+      e.preventDefault();
+      this.deferredInstallPrompt = e;
+      const btn = document.getElementById('btnInstallApp');
+      if (btn) btn.style.display = 'inline-flex';
+    });
+    window.addEventListener('appinstalled', () => {
+      this.deferredInstallPrompt = null;
+      this.toast('Aplicación instalada correctamente en tu dispositivo.');
+    });
+  },
+
+  promptInstall() {
+    if (this.deferredInstallPrompt) {
+      this.deferredInstallPrompt.prompt();
+      this.deferredInstallPrompt.userChoice.then(choice => {
+        if (choice.outcome === 'accepted') {
+          this.toast('Instalando Departamento de Inspectores Comerciales...');
+        }
+        this.deferredInstallPrompt = null;
+      });
+      return;
+    }
+
+    // Mostrar guía clara para instalar en iPhone/iPad, Android o Escritorio
+    document.getElementById('modalTitle').textContent = 'Instalar App (Móvil y Escritorio)';
+    document.getElementById('modalBody').innerHTML =
+      '<div style="font-size:14px;line-height:1.6;">' +
+      '<p>Podés instalar <strong>Departamento de Inspectores Comerciales</strong> como aplicación nativa en tu celular o computador:</p>' +
+      '<div class="card" style="margin-bottom:10px;padding:12px;"><strong>📱 Android (Chrome):</strong><br>Tocá el menú <strong>⋮</strong> arriba a la derecha → <strong>"Instalar aplicación"</strong> o <strong>"Agregar a la pantalla principal"</strong>.</div>' +
+      '<div class="card" style="margin-bottom:10px;padding:12px;"><strong>🍎 iPhone / iPad (Safari):</strong><br>Tocá el botón <strong>Compartir</strong> (cuadrado con flecha arriba) → <strong>"Agregar a inicio"</strong>.</div>' +
+      '<div class="card" style="margin-bottom:0;padding:12px;"><strong>💻 Escritorio (Chrome / Edge):</strong><br>Hacé clic en el ícono de <strong>Instalar (monitor con flecha)</strong> en la barra de direcciones arriba a la derecha.</div>' +
+      '</div>';
+    document.getElementById('detailModal').classList.add('open');
+  },
+
+  // ==========================================================================
   // NAVEGACIÓN
   // ==========================================================================
   openTab(tab) {
@@ -47,17 +99,17 @@ const App = {
     });
 
     if (tab === 'menu') {
-      this.navigate({ kind: 'menu', table: 'MENU', title: 'Menú Principal' }, false);
+      this.navigate({ kind: 'menu', table: 'MENU', title: 'Departamento de Inspectores Comerciales' }, false);
     } else if (tab === 'forms') {
       this.navigate({ kind: 'formsHub', title: 'Formularios de Fiscalización' }, false);
     } else if (tab === 'tables') {
-      this.navigate({ kind: 'tablesHub', title: 'Listados y Registros' }, false);
+      this.navigate({ kind: 'tablesHub', title: 'Listados y Registros Excel' }, false);
     } else if (tab === 'map') {
-      this.navigate({ kind: 'map', table: 'COMERCIO', title: 'Fiscalizaciones Comerciales (Mapa)' }, false);
+      this.navigate({ kind: 'map', table: 'COMERCIO', title: 'Mapa de Fiscalizaciones' }, false);
     } else if (tab === 'dashboard') {
-      this.navigate({ kind: 'dashboard', title: 'Dashboard Estadístico' }, false);
+      this.navigate({ kind: 'dashboard', title: 'Estadísticas y Dashboard' }, false);
     } else if (tab === 'backup') {
-      this.navigate({ kind: 'backup', title: 'Respaldo Excel y Carpetas Drive' }, false);
+      this.navigate({ kind: 'backup', title: 'Excel, Drive y Conexión en Vivo' }, false);
     }
   },
 
@@ -66,7 +118,7 @@ const App = {
       this.history.push(this.currentRoute);
     }
     this.currentRoute = route;
-    document.getElementById('headerTitle').textContent = route.title || this.boot.config.appName;
+    document.getElementById('headerTitle').textContent = route.title || 'Departamento de Inspectores Comerciales';
     document.getElementById('btnBack').classList.toggle('hidden', this.history.length === 0);
 
     switch (route.kind) {
@@ -101,7 +153,6 @@ const App = {
       this.navigate(Object.assign({}, mapped));
       return;
     }
-    // Búsqueda flexible por nombre de tabla
     if (this.boot.schemas[viewName]) {
       this.navigate({ kind: 'table', table: viewName, title: this.boot.schemas[viewName].label || viewName });
       return;
@@ -109,18 +160,35 @@ const App = {
     this.toast('Vista "' + viewName + '" no mapeada todavía.');
   },
 
+  isLiveConnected() {
+    return Boolean(window.__GAS_LIVE_CONNECTED__ || (this.boot && this.boot.isLiveBackend));
+  },
+
   // ==========================================================================
-  // VISTAS DE MENÚ (DINÁMICAS DESDE GOOGLE SHEETS + ACCESOS DIRECTOS)
+  // VISTAS DE MENÚ
   // ==========================================================================
   renderMenuTable(tableName) {
     const rows = (this.boot.navTables && this.boot.navTables[tableName]) || [];
     const schema = this.boot.schemas[tableName] || {};
     const labelKey = schema.keyCol || 'ID MENU';
 
-    let html = '<div class="section-header"><h2>' + this.esc(this.currentRoute.title) + '</h2></div>';
+    let html = '';
+    if (tableName === 'MENU') {
+      const live = this.isLiveConnected();
+      html += '<div class="dept-hero">' +
+        '<div class="dept-hero-left">' +
+        '<img class="dept-hero-logo" src="https://cristophermaciel.github.io/inspector-comercial/assets/logo-penaflor.jpg" onerror="this.src=\'./assets/logo-penaflor.jpg\'" alt="Logo Peñaflor">' +
+        '<div><h2>Departamento de Inspectores Comerciales</h2><p>Dirección de Seguridad Pública — Municipalidad de Peñaflor</p></div>' +
+        '</div>' +
+        '<div class="conn-badge ' + (live ? 'live' : 'demo') + '" onclick="App.openTab(\'backup\')">' +
+        (live ? '🟢 Conectado a Excel / Google Sheets en vivo' : '🟡 Modo Local — Clic para conectar Excel en vivo') +
+        '</div></div>';
+    } else {
+      html += '<div class="section-header"><h2>' + this.esc(this.currentRoute.title) + '</h2></div>';
+    }
 
     if (rows.length > 0) {
-      html += '<div class="gallery-grid">';
+      html += '<div class="gallery-grid" style="margin-bottom:20px;">';
       rows.forEach(r => {
         const title = r[labelKey] || r['VISTA'] || 'Opción';
         const vista = r['VISTA'] || '';
@@ -130,16 +198,13 @@ const App = {
           : '<div class="card-icon"><span class="material-icons">dashboard_customize</span></div>';
 
         html += '<div class="menu-card" onclick="App.openAppSheetViewName(\'' + this.escJs(vista) + '\')">' +
-          imgHtml +
-          '<div class="card-title">' + this.esc(title) + '</div>' +
-          '</div>';
+          imgHtml + '<div class="card-title">' + this.esc(title) + '</div></div>';
       });
       html += '</div>';
     }
 
-    // Siempre mostrar accesos rápidos completos en el Menú Principal
     if (tableName === 'MENU') {
-      html += '<div class="section-header" style="margin-top:24px;"><h2>Accesos Directos</h2></div>';
+      html += '<div class="section-header"><h2>Módulos de Fiscalización y Gestión</h2></div>';
       html += this._buildQuickCardsHtml();
     }
 
@@ -157,13 +222,13 @@ const App = {
       { title: 'Semana Peñaflorina', icon: 'festival', route: { kind: 'form', table: 'SEMANA PEÑAFLORINA', title: 'Semana Peñaflorina' } },
       { title: 'Notif. por Deudas', icon: 'notifications_active', route: { kind: 'table', table: 'Hoja 1', title: 'Notificaciones por Deudas' } },
       { title: 'Mapa Fiscalizaciones', icon: 'map', route: { kind: 'map', table: 'COMERCIO', title: 'Mapa de Fiscalizaciones' } },
-      { title: 'Dashboard', icon: 'bar_chart', route: { kind: 'dashboard', title: 'Dashboard Estadístico' } },
+      { title: 'Estadísticas / Dashboard', icon: 'bar_chart', route: { kind: 'dashboard', title: 'Estadísticas y Dashboard' } },
       { title: 'Documentos Drive', icon: 'folder_shared', route: { kind: 'links', table: 'DOCUMENTOS', title: 'Documentos Drive' } },
-      { title: 'Respaldo Excel', icon: 'cloud_download', route: { kind: 'backup', title: 'Respaldo Excel y Drive' } }
+      { title: 'Excel y Drive', icon: 'cloud_sync', route: { kind: 'backup', title: 'Excel, Drive y Conexión en Vivo' } }
     ];
 
     let html = '<div class="gallery-grid">';
-    quick.forEach((q, idx) => {
+    quick.forEach(q => {
       html += '<div class="menu-card" onclick=\'App.navigate(' + JSON.stringify(q.route) + ')\'>' +
         '<div class="card-icon"><span class="material-icons">' + q.icon + '</span></div>' +
         '<div class="card-title">' + this.esc(q.title) + '</div>' +
@@ -181,7 +246,7 @@ const App = {
       html += '<div class="menu-card" onclick="App.navigate({kind:\'form\',table:\'' + this.escJs(t) + '\',title:\'' + this.escJs(s.label) + '\'})">' +
         '<div class="card-icon"><span class="material-icons">' + (s.icon || 'edit_note') + '</span></div>' +
         '<div class="card-title">' + this.esc(s.label) + '</div>' +
-        (s.hasPdfBot ? '<span class="badge badge-blue">Auto PDF</span>' : '') +
+        (s.hasPdfBot ? '<span class="badge badge-blue">Auto PDF + Excel</span>' : '<span class="badge badge-blue">Excel</span>') +
         '</div>';
     });
     html += '</div>';
@@ -190,7 +255,7 @@ const App = {
 
   renderTablesHub() {
     const dataTables = ['COMERCIO', 'FUERA DE HORA', 'GIGANTOGRAFIA', 'PATENTES EN MORA', 'REPORTE', 'ASISTENCIA', 'SEMANA PEÑAFLORINA', 'Hoja 1', 'FUNCIONARIO', 'DOCUMENTOS'];
-    let html = '<div class="section-header"><h2>Listados y Registros</h2></div><div class="gallery-grid">';
+    let html = '<div class="section-header"><h2>Listados y Planillas Excel</h2></div><div class="gallery-grid">';
     dataTables.forEach(t => {
       const s = this.boot.schemas[t];
       html += '<div class="menu-card" onclick="App.navigate({kind:\'table\',table:\'' + this.escJs(t) + '\',title:\'' + this.escJs(s.label) + '\'})">' +
@@ -213,8 +278,7 @@ const App = {
       rows.forEach(r => {
         html += '<a class="menu-card" style="text-decoration:none;" href="' + this.esc(r['LINK'] || '#') + '" target="_blank">' +
           '<div class="card-icon"><span class="material-icons">open_in_new</span></div>' +
-          '<div class="card-title">' + this.esc(r['IR'] || 'Documento') + '</div>' +
-          '</a>';
+          '<div class="card-title">' + this.esc(r['IR'] || 'Documento') + '</div></a>';
       });
     }
     html += '</div>';
@@ -222,7 +286,7 @@ const App = {
   },
 
   // ==========================================================================
-  // FORMULARIO DINÁMICO (CON FOTOS, FIRMA CANVAS, GPS Y ENUMLIST)
+  // FORMULARIO DINÁMICO (DESPLEGABLES SIMPLES + DESPLEGABLES MULTI-SELECCIÓN)
   // ==========================================================================
   renderForm(tableName, existingRecord) {
     const schema = this.boot.schemas[tableName];
@@ -254,21 +318,16 @@ const App = {
         });
         inputHtml += '</select>';
       } else if (col.type === 'Enum') {
-        inputHtml = '<select class="form-control" data-col="' + this.esc(col.name) + '"><option value="">-- Seleccionar --</option>';
+        inputHtml = '<select class="form-control" data-col="' + this.esc(col.name) + '"><option value="">-- Seleccionar opción --</option>';
         (col.values || []).forEach(opt => {
           const sel = String(val).toUpperCase() === String(opt).toUpperCase() ? ' selected' : '';
           inputHtml += '<option value="' + this.esc(opt) + '"' + sel + '>' + this.esc(opt) + '</option>';
         });
         inputHtml += '</select>';
       } else if (col.type === 'EnumList') {
-        extraClass = 'full-width';
+        // DESPLEGABLE CON SELECCIÓN MÚLTIPLE + BUSCADOR + CHECKBOXES
         const selectedArr = String(val || '').split(',').map(s => s.trim()).filter(Boolean);
-        inputHtml = '<div class="chip-group" data-enumlist="' + this.esc(col.name) + '">';
-        (col.values || []).forEach(opt => {
-          const isSel = selectedArr.indexOf(opt) !== -1;
-          inputHtml += '<span class="chip' + (isSel ? ' selected' : '') + '" onclick="this.classList.toggle(\'selected\')" data-val="' + this.esc(opt) + '">' + this.esc(opt) + '</span>';
-        });
-        inputHtml += '</div>';
+        inputHtml = this._renderMultiSelectDropdown(fieldId, col.name, col.values || [], selectedArr);
       } else if (col.type === 'LongText') {
         extraClass = 'full-width';
         inputHtml = '<textarea class="form-control" data-col="' + this.esc(col.name) + '">' + this.esc(val) + '</textarea>';
@@ -313,11 +372,79 @@ const App = {
       '<div class="form-grid">' + fieldsHtml + '</div>' +
       '<div style="margin-top:20px;display:flex;gap:10px;justify-content:flex-end;">' +
       '<button type="button" class="btn btn-outline" onclick="App.goBack()">CANCELAR</button>' +
-      '<button type="submit" class="btn btn-primary"><span class="material-icons">save</span> GUARDAR' + (!isEdit && schema.hasPdfBot ? ' Y GENERAR PDF' : '') + '</button>' +
+      '<button type="submit" class="btn btn-primary"><span class="material-icons">save</span> GUARDAR EN EXCEL' + (!isEdit && schema.hasPdfBot ? ' Y PDF' : '') + '</button>' +
       '</div></form>';
 
     document.getElementById('appView').innerHTML = html;
     this.initSignaturePads();
+  },
+
+  _renderMultiSelectDropdown(fieldId, colName, values, selectedArr) {
+    let tagsHtml = '';
+    if (selectedArr.length === 0) {
+      tagsHtml = '<span class="ms-placeholder">Seleccionar una o varias opciones...</span>';
+    } else {
+      selectedArr.forEach(v => {
+        tagsHtml += '<span class="ms-tag">' + this.esc(v) + '</span>';
+      });
+    }
+
+    let optsHtml = '';
+    values.forEach(opt => {
+      const checked = selectedArr.indexOf(opt) !== -1 ? ' checked' : '';
+      optsHtml += '<label class="ms-opt" style="text-transform:none;font-weight:400;margin:0;letter-spacing:0;">' +
+        '<input type="checkbox" value="' + this.esc(opt) + '"' + checked + ' onchange="App.syncMultiSelect(\'' + fieldId + '\')">' +
+        '<span>' + this.esc(opt) + '</span></label>';
+    });
+
+    return '<div class="ms-dropdown" id="ms_' + fieldId + '" data-enumlist="' + this.esc(colName) + '">' +
+      '<div class="ms-trigger" onclick="App.toggleMultiSelect(\'' + fieldId + '\')">' +
+      '<div class="ms-tags" id="ms_tags_' + fieldId + '" style="display:flex;flex-wrap:wrap;gap:5px;">' + tagsHtml + '</div>' +
+      '<span class="material-icons ms-arrow">expand_more</span>' +
+      '</div>' +
+      '<div class="ms-panel">' +
+      '<input type="text" class="ms-search" placeholder="Filtrar opciones..." oninput="App.filterMultiSelect(\'' + fieldId + '\', this.value)">' +
+      '<div class="ms-actions">' +
+      '<button type="button" onclick="App.setAllMultiSelect(\'' + fieldId + '\', true)">Seleccionar todas</button>' +
+      '<button type="button" onclick="App.setAllMultiSelect(\'' + fieldId + '\', false)">Limpiar</button>' +
+      '<button type="button" onclick="App.toggleMultiSelect(\'' + fieldId + '\')">Listo ✓</button>' +
+      '</div>' +
+      '<div class="ms-options" id="ms_opts_' + fieldId + '">' + optsHtml + '</div>' +
+      '</div></div>';
+  },
+
+  toggleMultiSelect(fieldId) {
+    const el = document.getElementById('ms_' + fieldId);
+    if (!el) return;
+    const wasOpen = el.classList.contains('open');
+    document.querySelectorAll('.ms-dropdown.open').forEach(d => d.classList.remove('open'));
+    if (!wasOpen) el.classList.add('open');
+  },
+
+  filterMultiSelect(fieldId, query) {
+    const q = (query || '').toLowerCase();
+    document.querySelectorAll('#ms_opts_' + fieldId + ' .ms-opt').forEach(opt => {
+      const txt = opt.textContent.toLowerCase();
+      opt.style.display = txt.indexOf(q) !== -1 ? 'flex' : 'none';
+    });
+  },
+
+  setAllMultiSelect(fieldId, state) {
+    document.querySelectorAll('#ms_opts_' + fieldId + ' input[type="checkbox"]').forEach(cb => {
+      if (cb.closest('.ms-opt').style.display !== 'none') cb.checked = state;
+    });
+    this.syncMultiSelect(fieldId);
+  },
+
+  syncMultiSelect(fieldId) {
+    const box = document.getElementById('ms_tags_' + fieldId);
+    if (!box) return;
+    const vals = Array.from(document.querySelectorAll('#ms_opts_' + fieldId + ' input[type="checkbox"]:checked')).map(c => c.value);
+    if (vals.length === 0) {
+      box.innerHTML = '<span class="ms-placeholder">Seleccionar una o varias opciones...</span>';
+    } else {
+      box.innerHTML = vals.map(v => '<span class="ms-tag">' + this.esc(v) + '</span>').join('');
+    }
   },
 
   captureGPS(inputId) {
@@ -344,7 +471,6 @@ const App = {
     reader.onload = e => {
       const img = new Image();
       img.onload = () => {
-        // Comprimir imagen a máx 1280px para subida rápida a Google Drive
         const maxDim = 1280;
         let w = img.width, h = img.height;
         if (w > maxDim || h > maxDim) {
@@ -376,7 +502,7 @@ const App = {
       const ctx = canvas.getContext('2d');
       ctx.lineWidth = 2.4;
       ctx.lineCap = 'round';
-      ctx.strokeStyle = '#111827';
+      ctx.strokeStyle = '#101828';
 
       let drawing = false;
       let hasInk = false;
@@ -426,13 +552,13 @@ const App = {
       record[el.getAttribute('data-col')] = el.value;
     });
 
+    // Leer todos los desplegables multi-selección
     form.querySelectorAll('[data-enumlist]').forEach(group => {
       const col = group.getAttribute('data-enumlist');
-      const selected = Array.from(group.querySelectorAll('.chip.selected')).map(c => c.getAttribute('data-val'));
+      const selected = Array.from(group.querySelectorAll('input[type="checkbox"]:checked')).map(c => c.value);
       record[col] = selected.join(' , ');
     });
 
-    // Adjuntar firmas dibujadas
     Object.keys(this.signaturePads).forEach(id => {
       const pad = this.signaturePads[id];
       if (pad.hasInk()) {
@@ -440,15 +566,13 @@ const App = {
       }
     });
 
-    this.showLoader('Guardando registro, subiendo archivos a Drive y generando PDF...');
+    this.showLoader('Guardando datos en orden exacto en Excel/Sheets y Drive...');
     google.script.run
       .withSuccessHandler(res => {
         this.hideLoader();
         if (res && res.ok) {
-          let msg = res.isEdit ? 'Registro actualizado correctamente.' : 'Registro guardado en Google Sheets y Drive.';
-          if (res.pdf && res.pdf.url) {
-            msg += ' PDF generado automáticamente.';
-          }
+          let msg = res.isEdit ? 'Registro actualizado en la planilla.' : 'Registro guardado en orden exacto en la planilla.';
+          if (res.pdf && res.pdf.url) msg += ' PDF generado automáticamente.';
           this.toast(msg);
           this.navigate({ kind: 'table', table: tableName, title: schema.label });
         }
@@ -461,7 +585,7 @@ const App = {
   },
 
   // ==========================================================================
-  // VISTAS DE TABLA / LISTADOS
+  // VISTAS DE TABLA / LISTADOS + EXPORTACIÓN EXCEL .XLSX EN ORDEN EXACTO
   // ==========================================================================
   renderTable(tableName) {
     const schema = this.boot.schemas[tableName];
@@ -503,7 +627,7 @@ const App = {
     let html = '<div class="section-header">' +
       '<h2>' + this.esc(schema.label) + ' <span class="badge badge-blue">' + filtered.length + '</span></h2>' +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
-      '<button class="btn btn-outline btn-sm" onclick="App.exportCurrentTableCSV(\'' + this.escJs(tableName) + '\')"><span class="material-icons" style="font-size:16px;">download</span> Exportar CSV/Excel</button>' +
+      '<button class="btn btn-success btn-sm" onclick="App.exportCurrentTableXLSX(\'' + this.escJs(tableName) + '\')"><span class="material-icons" style="font-size:16px;">table_view</span> Descargar Excel (.xlsx)</button>' +
       '<button class="btn btn-primary btn-sm" onclick="App.navigate({kind:\'form\',table:\'' + this.escJs(tableName) + '\',title:\'' + this.escJs(schema.label) + '\'})"><span class="material-icons" style="font-size:16px;">add</span> NUEVO</button>' +
       '</div></div>' +
       summaryBanner +
@@ -556,10 +680,7 @@ const App = {
     const schema = this.boot.schemas[tableName];
 
     document.getElementById('modalTitle').textContent = schema.label + ' — ' + (row[schema.labelCol] || row.ID || '#' + rowNumber);
-    let body = '';
-
-    // Acciones rápidas (Llamar, Correo, Mapa, PDF)
-    body += '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">';
+    let body = '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">';
     if (row['TELEFONO']) body += '<a class="btn btn-outline btn-sm" href="tel:' + this.esc(row['TELEFONO']) + '">📞 Llamar</a>';
     if (row['EMAIL']) body += '<a class="btn btn-outline btn-sm" href="mailto:' + this.esc(row['EMAIL']) + '">✉️ Correo</a>';
     if (row['UBICACION']) body += '<a class="btn btn-outline btn-sm" target="_blank" href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(row['UBICACION']) + '">📍 Ver Mapa</a>';
@@ -569,15 +690,14 @@ const App = {
     if (schema.hasPdfBot) {
       body += '<button class="btn btn-primary btn-sm" onclick="App.regeneratePdf(\'' + this.escJs(tableName) + '\',' + rowNumber + ')">🔄 Generar PDF</button>';
     }
-    body += '<button class="btn btn-danger btn-sm" onclick="App.deleteRow(\'' + this.escJs(tableName) + '\',' + rowNumber + ')">🗑️ Eliminar</button>';
-    body += '</div>';
+    body += '<button class="btn btn-danger btn-sm" onclick="App.deleteRow(\'' + this.escJs(tableName) + '\',' + rowNumber + ')">🗑️ Eliminar</button></div>';
 
     schema.columns.forEach(col => {
       const val = row[col.name];
       if (val === undefined || val === null || val === '') return;
       let valHtml = this.esc(val);
       if ((col.type === 'Image' || col.type === 'Signature' || col.type === 'File' || col.type === 'Url') && String(val).startsWith('http')) {
-        valHtml = '<a href="' + this.esc(val) + '" target="_blank" style="color:var(--primary);font-weight:500;">Abrir archivo en Drive ↗</a>';
+        valHtml = '<a href="' + this.esc(val) + '" target="_blank" style="color:var(--accent);font-weight:600;">Abrir archivo en Drive ↗</a>';
       }
       body += '<div class="detail-row"><strong>' + this.esc(col.displayName || col.name) + '</strong><span>' + valHtml + '</span></div>';
     });
@@ -608,7 +728,7 @@ const App = {
   },
 
   deleteRow(tableName, rowNumber) {
-    if (!confirm('¿Seguro que deseas borrar este registro? Esta acción no se puede deshacer.')) return;
+    if (!confirm('¿Seguro que deseas borrar este registro?')) return;
     this.showLoader('Eliminando registro...');
     google.script.run
       .withSuccessHandler(() => {
@@ -624,23 +744,40 @@ const App = {
       .apiDeleteRecord(tableName, rowNumber);
   },
 
-  exportCurrentTableCSV(tableName) {
+  /**
+   * Exporta la tabla actual como archivo real Excel (.xlsx) en el orden exacto de columnas.
+   */
+  exportCurrentTableXLSX(tableName) {
     if (!this.currentTableData || !this.currentTableData.rows) return;
-    const headers = this.currentTableData.headers;
+    const schema = this.boot.schemas[tableName];
+    const headers = schema ? schema.columns.map(c => c.name) : this.currentTableData.headers;
     const rows = this.currentTableData.rows;
-    const csvLines = [headers.map(h => '"' + String(h).replace(/"/g, '""') + '"').join(';')];
-    rows.forEach(r => {
-      csvLines.push(headers.map(h => '"' + String(r[h] || '').replace(/"/g, '""') + '"').join(';'));
-    });
-    const blob = new Blob(['\uFEFF' + csvLines.join('\n')], { type: 'text/csv;charset=utf-8;' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = tableName.replace(/\s+/g, '_') + '_' + new Date().toISOString().slice(0, 10) + '.csv';
-    a.click();
+
+    if (typeof XLSX !== 'undefined') {
+      const aoa = [headers];
+      rows.forEach(r => {
+        aoa.push(headers.map(h => r[h] !== undefined && r[h] !== null ? r[h] : ''));
+      });
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      XLSX.utils.book_append_sheet(wb, ws, tableName.substring(0, 31));
+      XLSX.writeFile(wb, tableName.replace(/\s+/g, '_') + '_' + new Date().toISOString().slice(0, 10) + '.xlsx');
+      this.toast('Archivo Excel (.xlsx) descargado con orden exacto de columnas.');
+    } else {
+      const csvLines = [headers.map(h => '"' + String(h).replace(/"/g, '""') + '"').join(';')];
+      rows.forEach(r => {
+        csvLines.push(headers.map(h => '"' + String(r[h] || '').replace(/"/g, '""') + '"').join(';'));
+      });
+      const blob = new Blob(['\uFEFF' + csvLines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = tableName.replace(/\s+/g, '_') + '_' + new Date().toISOString().slice(0, 10) + '.csv';
+      a.click();
+    }
   },
 
   // ==========================================================================
-  // MAPA INTERACTIVO (FISCALIZACIONES COMERCIALES)
+  // MAPA INTERACTIVO
   // ==========================================================================
   renderMap(tableName) {
     const tablesWithLoc = ['COMERCIO', 'FUERA DE HORA', 'GIGANTOGRAFIA', 'PATENTES EN MORA', 'ASISTENCIA', 'REPORTE', 'SEMANA PEÑAFLORINA'];
@@ -682,10 +819,10 @@ const App = {
   },
 
   // ==========================================================================
-  // DASHBOARD (6 GRÁFICOS EXACTOS DE APPSHEET)
+  // DASHBOARD ESTADÍSTICO
   // ==========================================================================
   renderDashboard() {
-    this.showLoader('Calculando estadísticas del Dashboard...');
+    this.showLoader('Calculando estadísticas...');
     google.script.run
       .withSuccessHandler(stats => {
         this.hideLoader();
@@ -693,7 +830,7 @@ const App = {
         this.chartInstances = [];
 
         const k = stats.kpis;
-        const html = '<div class="section-header"><h2>Dashboard Estadístico</h2></div>' +
+        const html = '<div class="section-header"><h2>Estadísticas — Departamento de Inspectores Comerciales</h2></div>' +
           '<div class="kpi-grid">' +
           '<div class="kpi-card"><div class="kpi-label">Fis. Comerciales</div><div class="kpi-value">' + k.totalComercio + '</div></div>' +
           '<div class="kpi-card"><div class="kpi-label">Fuera de Horario</div><div class="kpi-value">' + k.totalFueraHora + '</div></div>' +
@@ -713,7 +850,7 @@ const App = {
 
         document.getElementById('appView').innerHTML = html;
 
-        const palette = ['#0b7bde', '#12b76a', '#f79009', '#f04438', '#7a5af8', '#06aed4', '#ee46bc'];
+        const palette = ['#0c347d', '#0b7bde', '#12b76a', '#f79009', '#f04438', '#7a5af8', '#06aed4'];
         const draw = (id, type, items, horizontal) => {
           const ctx = document.getElementById(id);
           if (!ctx) return;
@@ -724,7 +861,7 @@ const App = {
               datasets: [{
                 label: 'Cantidad / Monto',
                 data: items.map(i => i.value),
-                backgroundColor: type === 'doughnut' ? palette : '#0b7bde',
+                backgroundColor: type === 'doughnut' ? palette : '#0c347d',
                 borderRadius: type === 'bar' ? 6 : 0
               }]
             },
@@ -753,14 +890,30 @@ const App = {
   },
 
   // ==========================================================================
-  // RESPALDO EXCEL Y CARPETAS INDEPENDIENTES EN DRIVE
+  // RESPALDO EXCEL, CARPETAS DRIVE Y CONEXIÓN EN VIVO A APPS SCRIPT
   // ==========================================================================
   renderBackupPanel() {
     const f = this.boot.driveFolders || {};
-    const html = '<div class="section-header"><h2>Respaldo Excel (.xlsx) y Carpetas Drive</h2></div>' +
+    const savedApiUrl = localStorage.getItem('INSPECTOR_GAS_API_URL') || '';
+    const isEmbeddedGas = !window.__IS_PREVIEW_SHIM__;
+
+    let connectionCard = '';
+    if (!isEmbeddedGas) {
+      connectionCard = '<div class="card" style="border-left:5px solid var(--primary);">' +
+        '<h3 style="margin-top:0;color:var(--primary);">🔗 Conexión en Vivo a tus Excel / Google Sheets (Apps Script)</h3>' +
+        '<p style="color:var(--muted);font-size:13px;">Pegá aquí la URL de implementación de tu proyecto Google Apps Script (<code>https://script.google.com/macros/s/.../exec</code>) para que esta app móvil/escritorio guarde todos los registros en orden exacto en tus planillas <strong>INSPECTOR COMERCIAL</strong> y <strong>REGISTRO DE NOTIFICACIONES POR DEUDAS</strong>.</p>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+        '<input type="url" id="gasApiUrlInput" class="form-control" style="flex:1;min-width:260px;" placeholder="https://script.google.com/macros/s/AKfycb.../exec" value="' + this.esc(savedApiUrl) + '">' +
+        '<button class="btn btn-primary" onclick="App.saveGasApiUrl()">Conectar en Vivo</button>' +
+        (savedApiUrl ? '<button class="btn btn-outline" onclick="App.clearGasApiUrl()">Desconectar</button>' : '') +
+        '</div></div>';
+    }
+
+    const html = '<div class="section-header"><h2>Respaldo Excel (.xlsx), Drive y Conexión</h2></div>' +
+      connectionCard +
       '<div class="card">' +
       '<h3 style="margin-top:0;">Carpetas Independientes en Google Drive</h3>' +
-      '<p style="color:var(--muted);font-size:13px;">Todos los archivos de INSPECTOR COMERCIAL se organizan automáticamente en carpetas separadas dentro de <strong>INSPECTOR_COMERCIAL_DRIVE</strong>:</p>' +
+      '<p style="color:var(--muted);font-size:13px;">Todos los archivos se organizan automáticamente en carpetas independientes dentro de <strong>INSPECTOR_COMERCIAL_DRIVE</strong>:</p>' +
       '<div class="gallery-grid">' +
       '<a class="menu-card" style="text-decoration:none;" href="' + this.esc(f.root ? f.root.url : '#') + '" target="_blank"><div class="card-icon"><span class="material-icons">folder</span></div><div class="card-title">Carpeta Raíz App</div></a>' +
       '<a class="menu-card" style="text-decoration:none;" href="' + this.esc(f.fotos ? f.fotos.url : '#') + '" target="_blank"><div class="card-icon"><span class="material-icons">photo_library</span></div><div class="card-title">FOTOS (por módulo/registro)</div></a>' +
@@ -769,8 +922,8 @@ const App = {
       '<a class="menu-card" style="text-decoration:none;" href="' + this.esc(f.excel ? f.excel.url : '#') + '" target="_blank"><div class="card-icon"><span class="material-icons">table_view</span></div><div class="card-title">RESPALDOS EXCEL (.xlsx)</div></a>' +
       '</div></div>' +
       '<div class="card">' +
-      '<h3 style="margin-top:0;">Generar Respaldo en Excel (.xlsx)</h3>' +
-      '<p style="color:var(--muted);font-size:13px;">Exporta una copia completa en formato Microsoft Excel (.xlsx) de <strong>INSPECTOR COMERCIAL</strong> y <strong>REGISTRO DE NOTIFICACIONES POR DEUDAS</strong> directamente a tu carpeta de respaldos en Drive.</p>' +
+      '<h3 style="margin-top:0;">Respaldo Completo en Excel (.xlsx)</h3>' +
+      '<p style="color:var(--muted);font-size:13px;">Exporta ambas planillas oficiales en formato Microsoft Excel (.xlsx) manteniendo el orden exacto de columnas y tipos numéricos para tus estadísticas.</p>' +
       '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">' +
       '<button class="btn btn-primary" onclick="App.runExcelBackup()"><span class="material-icons">cloud_download</span> Generar Respaldo Excel Ahora</button>' +
       '<button class="btn btn-outline" onclick="App.toggleDailyBackup(' + (!this.boot.dailyBackupEnabled) + ')">' +
@@ -781,6 +934,23 @@ const App = {
 
     document.getElementById('appView').innerHTML = html;
     this.loadBackupHistory();
+  },
+
+  saveGasApiUrl() {
+    const val = (document.getElementById('gasApiUrlInput').value || '').trim();
+    if (!val.startsWith('https://script.google.com/')) {
+      this.toast('Ingresá una URL válida de Google Apps Script (https://script.google.com/macros/s/.../exec)');
+      return;
+    }
+    localStorage.setItem('INSPECTOR_GAS_API_URL', val);
+    this.toast('Conexión guardada. Recargando datos en vivo desde Google Sheets...');
+    setTimeout(() => location.reload(), 800);
+  },
+
+  clearGasApiUrl() {
+    localStorage.removeItem('INSPECTOR_GAS_API_URL');
+    this.toast('URL desconectada. Volviendo a modo vista previa local...');
+    setTimeout(() => location.reload(), 800);
   },
 
   loadBackupHistory() {

@@ -7,11 +7,14 @@
  */
 
 const APP_CONFIG = {
-  APP_NAME: 'INSPECTOR COMERCIAL',
-  SUBTITLE: 'Dirección Seguridad Pública Peñaflor',
+  APP_NAME: 'Departamento de Inspectores Comerciales',
+  SHORT_NAME: 'INSPECTOR COMERCIAL',
+  SUBTITLE: 'Seguridad Pública Municipalidad de Peñaflor',
   CREATOR: 'CREADOR CRISTOPHER MACIEL',
   CONTACT: 'CONTACTO 1410',
-  PRIMARY_COLOR: '#0b7bde',
+  PRIMARY_COLOR: '#0c347d',
+  ACCENT_COLOR: '#0b7bde',
+  LOGO_URL: 'https://cristophermaciel.github.io/inspector-comercial/assets/logo-penaflor.jpg',
   TIMEZONE: 'America/Santiago',
 
   // Hojas de cálculo originales de AppSheet
