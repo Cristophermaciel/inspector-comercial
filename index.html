@@ -1332,6 +1332,7 @@ var TABLE_SCHEMAS = {
     keyCol: '_RowNumber',
     labelCol: 'LOCAL COMERCIAL',
     hasPdfBot: false,
+    defaultSort: { column: 'DIAS RESTANTES', asc: true },
     formColumns: [
       'INSPECTOR', 'INSPECTOR ACOMPAÑANTE', 'N° NOTIFICACION', 'LOCAL COMERCIAL',
       'DIRECCION', 'FECHA DE NOTIFICACION', 'FECHA DE TERMINO'
@@ -1432,7 +1433,7 @@ var APPSHEET_VIEW_MAP = {
     // ========================================================================
     // MOTOR DE CACHÉ ULTRA-RÁPIDO (STALE-WHILE-REVALIDATE + PREFETCH + DEDUP)
     // ========================================================================
-    var SWR_PREFIX = 'INSP_SWR_V2:';
+    var SWR_PREFIX = 'INSP_SWR_V3:';
     var memCache = {};
     var inFlight = {};
     var prefetchedOnce = false;
@@ -1764,6 +1765,18 @@ var APPSHEET_VIEW_MAP = {
           var reportes = getMergedRows(db, 'REPORTE');
           var feriantes = getMergedRows(db, 'ASISTENCIA');
           var feriasNavidenas = getMergedRows(db, 'FERIAS NAVIDEÑAS');
+          var notificaciones = getMergedRows(db, 'Hoja 1');
+
+          var totalVencidosNoPago = 0, totalVencenHoy = 0, totalNotifVigentes = 0;
+          notificaciones.forEach(function(r) {
+            var raw = r['DIAS RESTANTES'];
+            if (raw === '' || raw === null || raw === undefined) return;
+            var n = Number(raw);
+            if (isNaN(n)) return;
+            if (n < 0) totalVencidosNoPago++;
+            else if (n === 0) totalVencenHoy++;
+            else totalNotifVigentes++;
+          });
 
           var countBy = function(arr, col) {
             var m = {};
@@ -1791,7 +1804,10 @@ var APPSHEET_VIEW_MAP = {
               totalMoraMonto: Math.round(totalMora),
               totalReportes: reportes.length,
               totalFeriantes: feriantes.length,
-              totalFeriasNavidenas: feriasNavidenas.length
+              totalFeriasNavidenas: feriasNavidenas.length,
+              totalNotificaciones: notificaciones.length,
+              totalVencidosNoPago: totalVencidosNoPago,
+              totalNotifVigentes: totalNotifVigentes
             },
             charts: {
               topPublicidad: countBy(publicidad, 'INSPECTOR'),
@@ -1799,7 +1815,12 @@ var APPSHEET_VIEW_MAP = {
               topFueraHora: countBy(fueraHora, 'INSPECTOR'),
               permisoAlDia: countBy(comercio, 'PERMISO AL DIA'),
               valorPatentesMora: Object.keys(moraPorEstado).map(function(k){ return { label: k, value: Math.round(moraPorEstado[k]) }; }),
-              totalesPatentesMora: countBy(mora.map(function(r){ return { 'ESTADO PATENTE': String(r['ESTADO PATENTE'] || 'SIN ESTADO').trim().toUpperCase() }; }), 'ESTADO PATENTE')
+              totalesPatentesMora: countBy(mora.map(function(r){ return { 'ESTADO PATENTE': String(r['ESTADO PATENTE'] || 'SIN ESTADO').trim().toUpperCase() }; }), 'ESTADO PATENTE'),
+              estadoNotificacionesDeudas: [
+                { label: 'Vencidos por No Pago', value: totalVencidosNoPago },
+                { label: 'Vencen Hoy', value: totalVencenHoy },
+                { label: 'En Plazo / Vigentes', value: totalNotifVigentes }
+              ]
             }
           };
         });
@@ -1914,6 +1935,7 @@ const App = {
   history: [],
   currentRoute: null,
   currentTableData: null,
+  deudasSort: 'demora_asc',
   mediaUploads: {},
   signaturePads: {},
   chartInstances: [],
@@ -2634,15 +2656,94 @@ const App = {
       .apiGetTableRows(tableName);
   },
 
+  _parseDateValue(val) {
+    if (!val) return NaN;
+    if (val instanceof Date) return val.getTime();
+    const s = String(val).trim();
+    const dmy = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    const ymd = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+    if (dmy) return new Date(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1])).getTime();
+    if (ymd) return new Date(Number(ymd[1]), Number(ymd[2]) - 1, Number(ymd[3])).getTime();
+    const parsed = Date.parse(s);
+    return isNaN(parsed) ? NaN : parsed;
+  },
+
+  _parseDiasRestantes(row) {
+    if (!row) return null;
+    const raw = row['DIAS RESTANTES'];
+    if (raw !== '' && raw !== null && raw !== undefined && !isNaN(Number(raw))) {
+      return Math.round(Number(raw));
+    }
+    const ts = this._parseDateValue(row['FECHA DE TERMINO']);
+    if (!isNaN(ts)) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const target = new Date(ts);
+      target.setHours(0, 0, 0, 0);
+      return Math.round((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    }
+    return null;
+  },
+
+  _sortDeudasRows(rows, mode) {
+    const arr = (rows || []).slice();
+    const sortMode = mode || 'demora_asc';
+    const numNotif = r => {
+      const n = Number(String(r['N° NOTIFICACION'] || '').replace(/[^0-9.-]/g, ''));
+      return isNaN(n) ? Number.MAX_SAFE_INTEGER : n;
+    };
+
+    arr.sort((a, b) => {
+      if (sortMode === 'num_asc') {
+        return numNotif(a) - numNotif(b);
+      }
+      if (sortMode === 'fecha_asc') {
+        const ta = this._parseDateValue(a['FECHA DE TERMINO']);
+        const tb = this._parseDateValue(b['FECHA DE TERMINO']);
+        if (isNaN(ta) && isNaN(tb)) return numNotif(a) - numNotif(b);
+        if (isNaN(ta)) return 1;
+        if (isNaN(tb)) return -1;
+        return ta !== tb ? ta - tb : (numNotif(a) - numNotif(b));
+      }
+
+      const da = this._parseDiasRestantes(a);
+      const db = this._parseDiasRestantes(b);
+      if (da === null && db === null) return numNotif(a) - numNotif(b);
+      if (da === null) return 1;
+      if (db === null) return -1;
+
+      if (sortMode === 'demora_desc') {
+        // Más atrasados primero (-60, -15, -2, 0, 1, 5, 10)
+        return da !== db ? da - db : (numNotif(a) - numNotif(b));
+      }
+
+      // Default 'demora_asc': Vencidos ordenados de menor a mayor días de demora (1 día, 2 días, 5 días...), luego Vence Hoy (0), luego Vigentes (1, 2, 5...)
+      const groupA = da < 0 ? 0 : (da === 0 ? 1 : 2);
+      const groupB = db < 0 ? 0 : (db === 0 ? 1 : 2);
+      if (groupA !== groupB) return groupA - groupB;
+      if (groupA === 0) {
+        const demA = Math.abs(da);
+        const demB = Math.abs(db);
+        return demA !== demB ? demA - demB : (numNotif(a) - numNotif(b));
+      }
+      return da !== db ? da - db : (numNotif(a) - numNotif(b));
+    });
+    return arr;
+  },
+
   _paintTable(tableName, data, query) {
     const schema = this.boot.schemas[tableName];
     const cols = schema.tableColumns || schema.columns.slice(0, 6).map(c => c.name);
     const q = (query || '').toLowerCase();
 
-    const filtered = (data.rows || []).filter(r => {
+    let filtered = (data.rows || []).filter(r => {
       if (!q) return true;
       return Object.values(r).some(v => String(v || '').toLowerCase().indexOf(q) !== -1);
     });
+
+    if (tableName === 'Hoja 1') {
+      filtered = this._sortDeudasRows(filtered, this.deudasSort);
+    }
 
     let summaryBanner = '';
     if (tableName === 'PATENTES EN MORA' && data.summary) {
@@ -2653,6 +2754,32 @@ const App = {
         '<div class="kpi-label">REGISTROS TOTALES</div>' +
         '<div class="kpi-value">' + filtered.length + '</div>' +
         '</div></div>';
+    } else if (tableName === 'Hoja 1') {
+      let vencidos = 0, vencenHoy = 0, vigentes = 0;
+      filtered.forEach(r => {
+        const d = this._parseDiasRestantes(r);
+        if (d === null) return;
+        if (d < 0) vencidos++;
+        else if (d === 0) vencenHoy++;
+        else vigentes++;
+      });
+      summaryBanner = '<div class="kpi-grid">' +
+        '<div class="kpi-card" style="border-top-color:var(--danger);"><div class="kpi-label">VENCIDOS POR NO PAGO</div><div class="kpi-value" style="color:var(--danger);">' + vencidos + '</div></div>' +
+        '<div class="kpi-card" style="border-top-color:var(--warning);"><div class="kpi-label">VENCEN HOY</div><div class="kpi-value" style="color:var(--warning);">' + vencenHoy + '</div></div>' +
+        '<div class="kpi-card" style="border-top-color:var(--success);"><div class="kpi-label">EN PLAZO / VIGENTES</div><div class="kpi-value" style="color:var(--success);">' + vigentes + '</div></div>' +
+        '<div class="kpi-card"><div class="kpi-label">TOTAL NOTIFICACIONES</div><div class="kpi-value">' + filtered.length + '</div></div>' +
+        '</div>';
+    }
+
+    let sortControlHtml = '';
+    if (tableName === 'Hoja 1') {
+      const m = this.deudasSort || 'demora_asc';
+      sortControlHtml = '<select class="form-control" style="max-width:340px;" onchange="App.deudasSort=this.value;App._paintTable(\'Hoja 1\', App.currentTableData, \'' + this.escJs(query || '') + '\')">' +
+        '<option value="demora_asc"' + (m === 'demora_asc' ? ' selected' : '') + '>Orden: Días de demora (Menor a Mayor)</option>' +
+        '<option value="demora_desc"' + (m === 'demora_desc' ? ' selected' : '') + '>Orden: Días de demora (Mayor a Menor)</option>' +
+        '<option value="num_asc"' + (m === 'num_asc' ? ' selected' : '') + '>Orden: N° Notificación (Menor a Mayor)</option>' +
+        '<option value="fecha_asc"' + (m === 'fecha_asc' ? ' selected' : '') + '>Orden: Fecha de Término (Más próxima)</option>' +
+        '</select>';
     }
 
     let html = '<div class="section-header">' +
@@ -2664,6 +2791,7 @@ const App = {
       summaryBanner +
       '<div class="toolbar">' +
       '<input type="search" class="form-control search-input" placeholder="Buscar por local, RUT, inspector, dirección..." value="' + this.esc(query) + '" oninput="App._paintTable(\'' + this.escJs(tableName) + '\', App.currentTableData, this.value)">' +
+      sortControlHtml +
       '</div>';
 
     if (filtered.length === 0) {
@@ -2686,6 +2814,18 @@ const App = {
           const val = r[c] !== undefined ? r[c] : '';
           if (c === 'PDF' && String(val).startsWith('http')) {
             html += '<td><a class="badge badge-green" href="' + this.esc(val) + '" target="_blank">Abrir PDF</a></td>';
+          } else if (c === 'DIAS RESTANTES' && tableName === 'Hoja 1') {
+            const d = this._parseDiasRestantes(r);
+            if (d === null) {
+              html += '<td><span class="badge badge-amber">Sin fecha</span></td>';
+            } else if (d < 0) {
+              const dem = Math.abs(d);
+              html += '<td><span class="badge badge-red">VENCIDO · ' + dem + ' ' + (dem === 1 ? 'día' : 'días') + ' de demora</span></td>';
+            } else if (d === 0) {
+              html += '<td><span class="badge badge-amber">VENCE HOY (0 días)</span></td>';
+            } else {
+              html += '<td><span class="badge badge-green">En plazo · ' + d + ' ' + (d === 1 ? 'día' : 'días') + '</span></td>';
+            }
           } else if (c === 'ESTADO PATENTE' || c === 'CUENTA CON PATENTE' || c === 'PERMISO AL DIA') {
             const up = String(val).toUpperCase();
             const cls = (up === 'SI' || up === 'AL DIA') ? 'badge-green' : (up === 'NO' || up === 'EN MORA' || up === 'VENCIDO') ? 'badge-red' : 'badge-amber';
@@ -3280,6 +3420,7 @@ const App = {
           '<div class="kpi-card"><div class="kpi-label">Fuera de Horario</div><div class="kpi-value">' + k.totalFueraHora + '</div></div>' +
           '<div class="kpi-card"><div class="kpi-label">Publicidad</div><div class="kpi-value">' + k.totalPublicidad + '</div></div>' +
           '<div class="kpi-card"><div class="kpi-label">Patentes en Mora ($)</div><div class="kpi-value">$' + Number(k.totalMoraMonto || 0).toLocaleString('es-CL') + '</div></div>' +
+          '<div class="kpi-card" style="border-top-color:var(--danger);cursor:pointer;" onclick="App.navigate({kind:\'table\',table:\'Hoja 1\',title:\'Notificaciones por Deudas\'})"><div class="kpi-label">Vencidos por No Pago</div><div class="kpi-value" style="color:var(--danger);">' + (k.totalVencidosNoPago || 0) + '</div></div>' +
           '<div class="kpi-card"><div class="kpi-label">Reportes Jefatura</div><div class="kpi-value">' + k.totalReportes + '</div></div>' +
           '<div class="kpi-card"><div class="kpi-label">Feriantes Registrados</div><div class="kpi-value">' + k.totalFeriantes + '</div></div>' +
           '<div class="kpi-card"><div class="kpi-label">Ferias Navideñas</div><div class="kpi-value">' + (k.totalFeriasNavidenas || 0) + '</div></div>' +
@@ -3291,22 +3432,23 @@ const App = {
           '<div class="chart-card"><h3>CUENTA CON SU PATENTE / PERMISO AL DÍA</h3><div class="chart-box"><canvas id="ch4"></canvas></div></div>' +
           '<div class="chart-card"><h3>VALOR DE PATENTES EN MORA ($)</h3><div class="chart-box"><canvas id="ch5"></canvas></div></div>' +
           '<div class="chart-card"><h3>TOTALES DE PATENTES MORA COMERCIALES</h3><div class="chart-box"><canvas id="ch6"></canvas></div></div>' +
+          '<div class="chart-card"><h3>NOTIFICACIONES POR DEUDAS — VENCIDOS POR NO PAGO</h3><div class="chart-box"><canvas id="ch7"></canvas></div></div>' +
           '</div>';
 
         document.getElementById('appView').innerHTML = html;
 
         const palette = ['#0c347d', '#0b7bde', '#12b76a', '#f79009', '#f04438', '#7a5af8', '#06aed4'];
-        const draw = (id, type, items, horizontal) => {
+        const draw = (id, type, items, horizontal, customPalette) => {
           const ctx = document.getElementById(id);
           if (!ctx) return;
           const ch = new Chart(ctx, {
             type,
             data: {
-              labels: items.map(i => i.label),
+              labels: (items || []).map(i => i.label),
               datasets: [{
                 label: 'Cantidad / Monto',
-                data: items.map(i => i.value),
-                backgroundColor: type === 'doughnut' ? palette : '#0c347d',
+                data: (items || []).map(i => i.value),
+                backgroundColor: type === 'doughnut' ? (customPalette || palette) : '#0c347d',
                 borderRadius: type === 'bar' ? 6 : 0
               }]
             },
@@ -3326,6 +3468,10 @@ const App = {
         draw('ch4', 'doughnut', stats.charts.permisoAlDia, false);
         draw('ch5', 'doughnut', stats.charts.valorPatentesMora, false);
         draw('ch6', 'bar', stats.charts.totalesPatentesMora, false);
+        draw('ch7', 'doughnut', stats.charts.estadoNotificacionesDeudas || [
+          { label: 'Vencidos por No Pago', value: k.totalVencidosNoPago || 0 },
+          { label: 'En Plazo / Vigentes', value: k.totalNotifVigentes || 0 }
+        ], false, ['#f04438', '#f79009', '#12b76a']);
       })
       .withFailureHandler(err => {
         this.hideLoader();

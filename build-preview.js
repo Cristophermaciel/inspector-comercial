@@ -28,7 +28,7 @@ if (typeof google === 'undefined' || !google.script) {
     // ========================================================================
     // MOTOR DE CACHÉ ULTRA-RÁPIDO (STALE-WHILE-REVALIDATE + PREFETCH + DEDUP)
     // ========================================================================
-    var SWR_PREFIX = 'INSP_SWR_V2:';
+    var SWR_PREFIX = 'INSP_SWR_V3:';
     var memCache = {};
     var inFlight = {};
     var prefetchedOnce = false;
@@ -360,6 +360,18 @@ if (typeof google === 'undefined' || !google.script) {
           var reportes = getMergedRows(db, 'REPORTE');
           var feriantes = getMergedRows(db, 'ASISTENCIA');
           var feriasNavidenas = getMergedRows(db, 'FERIAS NAVIDEÑAS');
+          var notificaciones = getMergedRows(db, 'Hoja 1');
+
+          var totalVencidosNoPago = 0, totalVencenHoy = 0, totalNotifVigentes = 0;
+          notificaciones.forEach(function(r) {
+            var raw = r['DIAS RESTANTES'];
+            if (raw === '' || raw === null || raw === undefined) return;
+            var n = Number(raw);
+            if (isNaN(n)) return;
+            if (n < 0) totalVencidosNoPago++;
+            else if (n === 0) totalVencenHoy++;
+            else totalNotifVigentes++;
+          });
 
           var countBy = function(arr, col) {
             var m = {};
@@ -387,7 +399,10 @@ if (typeof google === 'undefined' || !google.script) {
               totalMoraMonto: Math.round(totalMora),
               totalReportes: reportes.length,
               totalFeriantes: feriantes.length,
-              totalFeriasNavidenas: feriasNavidenas.length
+              totalFeriasNavidenas: feriasNavidenas.length,
+              totalNotificaciones: notificaciones.length,
+              totalVencidosNoPago: totalVencidosNoPago,
+              totalNotifVigentes: totalNotifVigentes
             },
             charts: {
               topPublicidad: countBy(publicidad, 'INSPECTOR'),
@@ -395,7 +410,12 @@ if (typeof google === 'undefined' || !google.script) {
               topFueraHora: countBy(fueraHora, 'INSPECTOR'),
               permisoAlDia: countBy(comercio, 'PERMISO AL DIA'),
               valorPatentesMora: Object.keys(moraPorEstado).map(function(k){ return { label: k, value: Math.round(moraPorEstado[k]) }; }),
-              totalesPatentesMora: countBy(mora.map(function(r){ return { 'ESTADO PATENTE': String(r['ESTADO PATENTE'] || 'SIN ESTADO').trim().toUpperCase() }; }), 'ESTADO PATENTE')
+              totalesPatentesMora: countBy(mora.map(function(r){ return { 'ESTADO PATENTE': String(r['ESTADO PATENTE'] || 'SIN ESTADO').trim().toUpperCase() }; }), 'ESTADO PATENTE'),
+              estadoNotificacionesDeudas: [
+                { label: 'Vencidos por No Pago', value: totalVencidosNoPago },
+                { label: 'Vencen Hoy', value: totalVencenHoy },
+                { label: 'En Plazo / Vigentes', value: totalNotifVigentes }
+              ]
             }
           };
         });
