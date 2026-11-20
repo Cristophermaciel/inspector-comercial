@@ -46,6 +46,34 @@ const DataService = {
     return { email: email || 'Usuario Municipal', isAuthorized };
   },
 
+  _normalizeFuncionarios(rawRows) {
+    const out = [];
+    const seen = {};
+    const norm = s => String(s || '')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase().replace(/\s+/g, ' ').trim();
+
+    const addIfValid = (item) => {
+      const nombre = String(item.nombre || item.NOMBRE || '').trim();
+      const rol = String(item.rol || item.ROL || '').trim();
+      if (!nombre) return;
+      if (/EQUIPO/i.test(rol) || /EQUIPO/i.test(nombre)) return;
+      const key = norm(nombre);
+      if (seen[key]) return;
+      seen[key] = true;
+      out.push({
+        id: item.id || item.ID || '',
+        nombre: nombre,
+        rol: rol || 'INSPECTOR',
+        imagen: item.imagen || item.IMAGEN || ''
+      });
+    };
+
+    (rawRows || []).forEach(addIfValid);
+    (APP_CONFIG.DEFAULT_FUNCIONARIOS || []).forEach(addIfValid);
+    return out;
+  },
+
   /**
    * Carga inicial de la Web App: esquemas, menú dinámico, funcionarios y carpetas Drive.
    */
@@ -56,7 +84,7 @@ const DataService = {
     }
 
     const driveFolders = DriveManager.ensureBaseStructure();
-    const funcionarios = this._safeReadRows('FUNCIONARIO');
+    const funcionarios = this._normalizeFuncionarios(this._safeReadRows('FUNCIONARIO'));
     const navTables = {};
     ['MENU', 'SUBMENU', 'SUBMENU 2', 'SUBMENU 3', 'LISTADOS', 'FERIAS LIBRES', 'DOCUMENTOS'].forEach(t => {
       navTables[t] = this._safeReadRows(t);
@@ -74,12 +102,7 @@ const DataService = {
       },
       schemas: TABLE_SCHEMAS,
       viewMap: APPSHEET_VIEW_MAP,
-      funcionarios: funcionarios.map(f => ({
-        id: f['ID'] || '',
-        nombre: f['NOMBRE'] || '',
-        rol: f['ROL'] || '',
-        imagen: f['IMAGEN'] || ''
-      })).filter(f => f.nombre),
+      funcionarios,
       navTables,
       driveFolders,
       dailyBackupEnabled: BackupExcel.hasDailyBackupTrigger()
@@ -231,12 +254,30 @@ const DataService = {
         }
       }
 
-      // 3. Garantizar encabezados en orden exacto si la hoja estuviera vacía
+      // 3. Garantizar encabezados en orden exacto si la hoja estuviera vacía,
+      //    y agregar automáticamente columnas nuevas del esquema (ej. INSPECTOR ACOMPAÑANTE) al final sin desplazar columnas existentes.
       const hasHeaders = headers.some(h => h !== '');
-      let finalHeaders = headers;
+      let finalHeaders = headers.slice();
       if (!hasHeaders) {
         finalHeaders = schema.columns.map(c => c.name);
         sheet.getRange(1, 1, 1, finalHeaders.length).setValues([finalHeaders]);
+      } else {
+        const existingNorm = {};
+        finalHeaders.forEach(h => {
+          if (h) existingNorm[h.toUpperCase().trim()] = true;
+        });
+        const missingHeaders = [];
+        schema.columns.forEach(c => {
+          const normName = c.name.toUpperCase().trim();
+          if (!existingNorm[normName] && recordData[c.name] !== undefined) {
+            missingHeaders.push(c.name);
+            existingNorm[normName] = true;
+          }
+        });
+        if (missingHeaders.length > 0) {
+          sheet.getRange(1, finalHeaders.length + 1, 1, missingHeaders.length).setValues([missingHeaders]);
+          finalHeaders = finalHeaders.concat(missingHeaders);
+        }
       }
 
       // Mapa rápido de definición de columnas (insensible a mayúsculas/espacios extra)
@@ -407,7 +448,7 @@ const DataService = {
           lng: parseFloat(match[2]),
           title: r['NOMBRE LOCAL'] || r['NOMBRE LOCAL COMERCIAL'] || r['NOMBRE DUEÑO'] || r['FUNCIONARIO'] || 'Registro #' + r._RowNumber,
           subtitle: r['DIRECCION'] || '',
-          inspector: r['INSPECTOR'] || r['FISCALIZADOR'] || r['FUNCIONARIO'] || '',
+          inspector: r['INSPECTOR'] || r['FISCALIZADOR'] || r['FUNCIONARIO'] || r['CONTROLADO POR'] || '',
           fecha: r['FECHA HORA'] || r['FECHA'] || '',
           patente: r['CUENTA CON PATENTE'] || r['ESTADO PATENTE'] || ''
         });
@@ -449,12 +490,17 @@ const DataService = {
       'ID_REGISTRO', 'FECHA_JORNADA', 'HORA_MARCA', 'FERIA', 'N_PUESTO',
       'ID_FERIANTE', 'NOMBRE_DUENO', 'RUT_DUENO', 'ROL', 'PATENTE',
       'GIRO', 'ESTADO_ASISTENCIA', 'MEDIO_INGRESO', 'INSPECTOR',
-      'UBICACION_PUESTO', 'OBSERVACIONES'
+      'UBICACION_PUESTO', 'OBSERVACIONES', 'INSPECTOR_ACOMPANANTE'
     ];
     if (!sheet) {
       sheet = ss.insertSheet(sheetName);
       sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
       sheet.setFrozenRows(1);
+    } else if (sheet.getLastColumn() < headers.length) {
+      const existing = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1)).getValues()[0].map(h => String(h || '').trim());
+      if (existing.indexOf('INSPECTOR_ACOMPANANTE') === -1) {
+        sheet.getRange(1, headers.length).setValue('INSPECTOR_ACOMPANANTE');
+      }
     }
     return { sheet, headers, sheetName };
   },
@@ -464,7 +510,8 @@ const DataService = {
     const lastRow = sheet.getLastRow();
     if (lastRow < 2) return { feria: feriaName, fecha: fechaStr, marks: {} };
 
-    const values = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
+    const readCols = Math.min(sheet.getLastColumn(), headers.length);
+    const values = sheet.getRange(2, 1, lastRow - 1, readCols).getValues();
     const marks = {};
     values.forEach((row, idx) => {
       const fVal = row[1] instanceof Date
@@ -490,7 +537,8 @@ const DataService = {
         medio: row[12],
         inspector: row[13],
         ubicacion: row[14],
-        observaciones: row[15]
+        observaciones: row[15],
+        inspectorAcompanante: row[16] || ''
       };
     });
     return { feria: feriaName, fecha: fechaStr, marks };
@@ -542,7 +590,10 @@ const DataService = {
         payload.medio || 'MANUAL',
         payload.inspector || '',
         payload.ubicacion || '',
-        payload.observaciones || ''
+        payload.observaciones || '',
+        Array.isArray(payload.inspectorAcompanante)
+          ? payload.inspectorAcompanante.join(' , ')
+          : (payload.inspectorAcompanante || '')
       ];
 
       const targetRow = existingRow || (sheet.getLastRow() + 1);
@@ -559,7 +610,8 @@ const DataService = {
           puesto,
           estado: rowArr[11],
           medio: rowArr[12],
-          inspector: rowArr[13]
+          inspector: rowArr[13],
+          inspectorAcompanante: rowArr[16]
         }
       };
     } finally {

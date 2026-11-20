@@ -18,6 +18,7 @@ const App = {
     feria: '',
     fecha: new Date().toISOString().slice(0, 10),
     inspector: '',
+    inspectorAcompanante: [],
     filter: 'ALL',
     query: '',
     allAsistenciaRows: [],
@@ -158,8 +159,19 @@ const App = {
 
   refreshCurrent() {
     if (!this.currentRoute) return;
+    if (window.__clearInspectorLiveCache) window.__clearInspectorLiveCache();
     this.navigate(this.currentRoute, false);
-    this.toast('Datos sincronizados');
+    this.toast('Sincronizando datos en vivo...');
+  },
+
+  applyLiveBootstrapUpdate(data) {
+    if (!data || !data.authorized) return;
+    this.boot = data;
+    const lbl = document.getElementById('userEmailLabel');
+    if (lbl && data.user && data.user.email) lbl.textContent = data.user.email;
+    if (this.currentRoute && this.currentRoute.kind === 'backup') {
+      this.renderBackupPanel();
+    }
   },
 
   openAppSheetViewName(viewName) {
@@ -219,7 +231,7 @@ const App = {
       html += '<div class="section-header"><h2>' + this.esc(this.currentRoute.title) + '</h2></div>';
     }
 
-    if (rows.length > 0) {
+    if (tableName !== 'MENU' && rows.length > 0) {
       html += '<div class="gallery-grid" style="margin-bottom:22px;">';
       rows.forEach(r => {
         const title = r[labelKey] || r['VISTA'] || 'Opción';
@@ -322,6 +334,43 @@ const App = {
   },
 
   // ==========================================================================
+  // LISTADO DE INSPECTORES (SIN EQUIPO + INCLUYE TAMARA MARTINEZ)
+  // ==========================================================================
+  getInspectorsList() {
+    const fallback = [
+      { nombre: 'Luis Zamorano Vásquez', rol: 'Inspector Comercial' },
+      { nombre: 'JHON NAVARRETE', rol: 'INSPECTOR' },
+      { nombre: 'SERGIO OYARCE', rol: 'INSPECTOR' },
+      { nombre: 'ENRIQUE RODRIGUEZ', rol: 'INSPECTOR' },
+      { nombre: 'NICOLAS ZAMORANO', rol: 'INSPECTOR' },
+      { nombre: 'LEONARDO VALENZUELA', rol: 'INSPECTOR' },
+      { nombre: 'LEONARDO HERRERA', rol: 'INSPECTOR' },
+      { nombre: 'PATRICIO CANCINO', rol: 'INSPECTOR' },
+      { nombre: 'TAMARA MARTINEZ', rol: 'INSPECTOR' }
+    ];
+    const norm = s => String(s || '')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase().replace(/\s+/g, ' ').trim();
+
+    const out = [];
+    const seen = {};
+    const add = (f) => {
+      const nombre = String((f && (f.nombre || f.NOMBRE)) || '').trim();
+      const rol = String((f && (f.rol || f.ROL)) || '').trim();
+      if (!nombre) return;
+      if (/EQUIPO/i.test(rol) || /EQUIPO/i.test(nombre)) return;
+      const key = norm(nombre);
+      if (seen[key]) return;
+      seen[key] = true;
+      out.push({ nombre, rol: rol || 'INSPECTOR' });
+    };
+
+    ((this.boot && this.boot.funcionarios) || []).forEach(add);
+    fallback.forEach(add);
+    return out;
+  },
+
+  // ==========================================================================
   // FORMULARIO DINÁMICO (DESPLEGABLES SIMPLES + DESPLEGABLES MULTI-SELECCIÓN)
   // ==========================================================================
   renderForm(tableName, existingRecord) {
@@ -333,6 +382,8 @@ const App = {
     const orderedColNames = schema.formColumns || schema.columns.map(c => c.name);
     const colMap = {};
     schema.columns.forEach(c => colMap[c.name] = c);
+
+    const inspectors = this.getInspectorsList();
 
     let fieldsHtml = '';
     orderedColNames.forEach(colName => {
@@ -347,12 +398,31 @@ const App = {
       let extraClass = '';
 
       if (col.type === 'Ref' && col.refTable === 'FUNCIONARIO') {
-        inputHtml = '<select class="form-control" data-col="' + this.esc(col.name) + '"><option value="">-- Seleccionar Inspector --</option>';
-        (this.boot.funcionarios || []).forEach(f => {
-          const sel = String(val) === String(f.nombre) ? ' selected' : '';
+        inputHtml = '<select class="form-control" data-col="' + this.esc(col.name) + '"><option value="">-- Seleccionar Inspector a Cargo --</option>';
+        let matched = false;
+        inspectors.forEach(f => {
+          const isSel = String(val).trim().toUpperCase() === String(f.nombre).trim().toUpperCase();
+          if (isSel) matched = true;
+          const sel = isSel ? ' selected' : '';
           inputHtml += '<option value="' + this.esc(f.nombre) + '"' + sel + '>' + this.esc(f.nombre) + (f.rol ? ' (' + this.esc(f.rol) + ')' : '') + '</option>';
         });
+        if (val && !matched) {
+          inputHtml += '<option value="' + this.esc(val) + '" selected>' + this.esc(val) + '</option>';
+        }
         inputHtml += '</select>';
+      } else if (col.type === 'RefList' && col.refTable === 'FUNCIONARIO') {
+        const selectedArr = String(val || '').split(',').map(s => s.trim()).filter(Boolean);
+        const inspectorOpts = inspectors.map(f => ({
+          value: f.nombre,
+          label: f.nombre + (f.rol ? ' (' + f.rol + ')' : '')
+        }));
+        inputHtml = this._renderMultiSelectDropdown(
+          fieldId,
+          col.name,
+          inspectorOpts,
+          selectedArr,
+          'Seleccionar uno o varios inspectores acompañantes...'
+        );
       } else if (col.type === 'Enum') {
         inputHtml = '<select class="form-control" data-col="' + this.esc(col.name) + '"><option value="">-- Seleccionar opción --</option>';
         (col.values || []).forEach(opt => {
@@ -415,34 +485,49 @@ const App = {
     this.initSignaturePads();
   },
 
-  _renderMultiSelectDropdown(fieldId, colName, values, selectedArr) {
+  _renderMultiSelectDropdown(fieldId, colName, values, selectedArr, placeholder, onChangeCallback) {
+    const ph = placeholder || 'Seleccionar una o varias opciones...';
+    const selectedUpper = (selectedArr || []).map(v => String(v).trim().toUpperCase());
     let tagsHtml = '';
-    if (selectedArr.length === 0) {
-      tagsHtml = '<span class="ms-placeholder">Seleccionar una o varias opciones...</span>';
+    if (!selectedArr || selectedArr.length === 0) {
+      tagsHtml = '<span class="ms-placeholder">' + this.esc(ph) + '</span>';
     } else {
       selectedArr.forEach(v => {
         tagsHtml += '<span class="ms-tag">' + this.esc(v) + '</span>';
       });
     }
 
+    const changeAttr = onChangeCallback
+      ? 'App.syncMultiSelect(\'' + fieldId + '\');' + onChangeCallback
+      : 'App.syncMultiSelect(\'' + fieldId + '\')';
+
     let optsHtml = '';
-    values.forEach(opt => {
-      const checked = selectedArr.indexOf(opt) !== -1 ? ' checked' : '';
+    (values || []).forEach(opt => {
+      const optVal = typeof opt === 'object' && opt !== null ? opt.value : opt;
+      const optLabel = typeof opt === 'object' && opt !== null ? (opt.label || opt.value) : opt;
+      const checked = selectedUpper.indexOf(String(optVal).trim().toUpperCase()) !== -1 ? ' checked' : '';
       optsHtml += '<label class="ms-opt" style="text-transform:none;font-weight:400;margin:0;letter-spacing:0;">' +
-        '<input type="checkbox" value="' + this.esc(opt) + '"' + checked + ' onchange="App.syncMultiSelect(\'' + fieldId + '\')">' +
-        '<span>' + this.esc(opt) + '</span></label>';
+        '<input type="checkbox" value="' + this.esc(optVal) + '"' + checked + ' onchange="' + changeAttr + '">' +
+        '<span>' + this.esc(optLabel) + '</span></label>';
     });
+
+    const setAllTrue = onChangeCallback
+      ? 'App.setAllMultiSelect(\'' + fieldId + '\', true);' + onChangeCallback
+      : 'App.setAllMultiSelect(\'' + fieldId + '\', true)';
+    const setAllFalse = onChangeCallback
+      ? 'App.setAllMultiSelect(\'' + fieldId + '\', false);' + onChangeCallback
+      : 'App.setAllMultiSelect(\'' + fieldId + '\', false)';
 
     return '<div class="ms-dropdown" id="ms_' + fieldId + '" data-enumlist="' + this.esc(colName) + '">' +
       '<div class="ms-trigger" onclick="App.toggleMultiSelect(\'' + fieldId + '\')">' +
-      '<div class="ms-tags" id="ms_tags_' + fieldId + '" style="display:flex;flex-wrap:wrap;gap:5px;">' + tagsHtml + '</div>' +
+      '<div class="ms-tags" id="ms_tags_' + fieldId + '" data-placeholder="' + this.esc(ph) + '" style="display:flex;flex-wrap:wrap;gap:5px;">' + tagsHtml + '</div>' +
       '<span class="material-icons ms-arrow">expand_more</span>' +
       '</div>' +
       '<div class="ms-panel">' +
       '<input type="text" class="ms-search" placeholder="Filtrar opciones..." oninput="App.filterMultiSelect(\'' + fieldId + '\', this.value)">' +
       '<div class="ms-actions">' +
-      '<button type="button" onclick="App.setAllMultiSelect(\'' + fieldId + '\', true)">Seleccionar todas</button>' +
-      '<button type="button" onclick="App.setAllMultiSelect(\'' + fieldId + '\', false)">Limpiar</button>' +
+      '<button type="button" onclick="' + setAllTrue + '">Seleccionar todas</button>' +
+      '<button type="button" onclick="' + setAllFalse + '">Limpiar</button>' +
       '<button type="button" onclick="App.toggleMultiSelect(\'' + fieldId + '\')">Listo ✓</button>' +
       '</div>' +
       '<div class="ms-options" id="ms_opts_' + fieldId + '">' + optsHtml + '</div>' +
@@ -475,9 +560,10 @@ const App = {
   syncMultiSelect(fieldId) {
     const box = document.getElementById('ms_tags_' + fieldId);
     if (!box) return;
+    const ph = box.getAttribute('data-placeholder') || 'Seleccionar una o varias opciones...';
     const vals = Array.from(document.querySelectorAll('#ms_opts_' + fieldId + ' input[type="checkbox"]:checked')).map(c => c.value);
     if (vals.length === 0) {
-      box.innerHTML = '<span class="ms-placeholder">Seleccionar una o varias opciones...</span>';
+      box.innerHTML = '<span class="ms-placeholder">' + this.esc(ph) + '</span>';
     } else {
       box.innerHTML = vals.map(v => '<span class="ms-tag">' + this.esc(v) + '</span>').join('');
     }
@@ -491,9 +577,13 @@ const App = {
     this.toast('Obteniendo ubicación GPS...');
     navigator.geolocation.getCurrentPosition(
       pos => {
-        const coords = pos.coords.latitude.toFixed(6) + ', ' + pos.coords.longitude.toFixed(6);
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const coords = lat.toFixed(6) + ', ' + lng.toFixed(6);
         document.getElementById(inputId).value = coords;
-        this.toast('Ubicación capturada: ' + coords);
+        const q = this.detectQuadrant(lat, lng);
+        const qMsg = q ? (' · 📍 Cuadrante ' + q.id + ' (' + q.unidad + ')') : ' · Fuera de geocerca Peñaflor';
+        this.toast('Ubicación capturada: ' + coords + qMsg);
       },
       err => this.toast('Error GPS: ' + err.message),
       { enableHighAccuracy: true, timeout: 10000 }
@@ -674,8 +764,15 @@ const App = {
     if (filtered.length === 0) {
       html += '<div class="card" style="text-align:center;color:var(--muted);">No se encontraron registros.</div>';
     } else {
+      const colMap = {};
+      (schema.columns || []).forEach(c => colMap[c.name] = c);
       html += '<div class="table-wrap"><table class="data-table"><thead><tr>';
-      cols.forEach(c => html += '<th>' + this.esc(c) + '</th>');
+      cols.forEach(c => {
+        const hdr = c === 'INSPECTOR ACOMPAÑANTE'
+          ? 'INSPECTOR ACOMPAÑANTE'
+          : ((colMap[c] && colMap[c].displayName) || c);
+        html += '<th>' + this.esc(hdr) + '</th>';
+      });
       html += '<th>ACCIONES</th></tr></thead><tbody>';
 
       filtered.slice(0, 1000).forEach(r => {
@@ -814,8 +911,156 @@ const App = {
   },
 
   // ==========================================================================
-  // MAPA INTERACTIVO
+  // MAPA INTERACTIVO CON CUADRANTES Y GEOCERCAS (CARABINEROS + SRA/SRB/SRA1)
   // ==========================================================================
+  _getDefaultQuadrants() {
+    return [
+      {
+        id: '252A', nombre: 'Cuadrante 252A', tipo: 'URBANO',
+        unidad: '56ª Comisaría Peñaflor', telefono: '+569 7959 8937',
+        sectores: 'Polígono oficial KMZ — Vicuña Mackenna, Av. del Parque, Pelvín urbano y Santa Corina',
+        color: '#1e293b',
+        polygon: [
+          [-33.5948988,-70.885058],[-33.5975261,-70.8930854],[-33.5916993,-70.8954028],[-33.5929862,-70.8967761],
+          [-33.5947021,-70.8970336],[-33.5988844,-70.9028701],[-33.5989202,-70.9051875],[-33.5998495,-70.9060888],
+          [-33.604927,-70.910248],[-33.6066426,-70.9086172],[-33.6078579,-70.9086172],[-33.6102883,-70.9069864],
+          [-33.6117179,-70.8989183],[-33.6086073,-70.8934162],[-33.6058545,-70.8926992],[-33.604675,-70.8889226],
+          [-33.5990132,-70.885617],[-33.5980749,-70.8874087],[-33.5974546,-70.8870343],[-33.5970078,-70.8848649],
+          [-33.5948988,-70.885058]
+        ]
+      },
+      {
+        id: '252B', nombre: 'Cuadrante 252B', tipo: 'URBANO',
+        unidad: '56ª Comisaría Peñaflor', telefono: '+569 6841 7064',
+        sectores: 'Polígono oficial KMZ — Vicuña Mackenna, Av. del Parque, Los Guindos y Pajaritos',
+        color: '#9C27B0',
+        polygon: [
+          [-33.6116715,-70.898984],[-33.6104759,-70.8750358],[-33.6075256,-70.8735352],[-33.6069716,-70.8719473],
+          [-33.5913686,-70.8611541],[-33.5958014,-70.8718401],[-33.5949256,-70.8849721],[-33.5970346,-70.884779],
+          [-33.5972821,-70.8861689],[-33.5973843,-70.8865835],[-33.5974596,-70.886998],[-33.5981017,-70.8873228],
+          [-33.5989953,-70.8855847],[-33.6049163,-70.8889633],[-33.6059351,-70.8926111],[-33.6087056,-70.8933088],
+          [-33.6092769,-70.8947568],[-33.6116715,-70.898984]
+        ]
+      },
+      {
+        id: '252C', nombre: 'Cuadrante 252C', tipo: 'URBANO',
+        unidad: '56ª Comisaría Peñaflor', telefono: '+569 8846 1164',
+        sectores: 'Polígono oficial KMZ — Sector Peñaflor (Av. Peñaflor, Av. Berlín, B. Subercaseaux)',
+        color: '#0288D1',
+        polygon: [
+          [-33.6270772,-70.8830877],[-33.621196,-70.8785764],[-33.6105563,-70.8751647],[-33.6117179,-70.8989183],
+          [-33.6102883,-70.9069864],[-33.6078579,-70.9086172],[-33.6066426,-70.9086172],[-33.604927,-70.910248],
+          [-33.6342313,-70.9290449],[-33.6346601,-70.9145395],[-33.6301936,-70.9105913],[-33.6270772,-70.8830877]
+        ]
+      },
+      {
+        id: '253A', nombre: 'Cuadrante 253A', tipo: 'URBANO',
+        unidad: 'Subcomisaría Malloco', telefono: '+569 7959 8938',
+        sectores: 'Polígono oficial KMZ — Cuadrante Malloco Norte / Av. Balmaceda',
+        color: '#0097A7',
+        polygon: [
+          [-33.6103776,-70.8751432],[-33.6100202,-70.8572475],[-33.6100559,-70.8521191],[-33.6054274,-70.849394],
+          [-33.596938,-70.8458749],[-33.5946648,-70.8501008],[-33.5920942,-70.8611528],[-33.5912005,-70.8611099],
+          [-33.6000836,-70.8672682],[-33.6068928,-70.8719246],[-33.6074468,-70.8734695],[-33.6103776,-70.8751432]
+        ]
+      },
+      {
+        id: '253B', nombre: 'Cuadrante 253B', tipo: 'URBANO',
+        unidad: 'Subcomisaría Malloco', telefono: '+569 9964 7797',
+        sectores: 'Polígono oficial KMZ — Cuadrante Malloco Sur / Las Praderas',
+        color: '#097138',
+        polygon: [
+          [-33.6270772,-70.8830877],[-33.6310794,-70.8668657],[-33.6206036,-70.8591053],[-33.6154013,-70.8554403],
+          [-33.6100559,-70.8521191],[-33.6104184,-70.8749485],[-33.6106775,-70.8751202],[-33.6106263,-70.8749715],
+          [-33.621196,-70.8785764],[-33.6270772,-70.8830877]
+        ]
+      },
+      {
+        id: 'SRA', nombre: 'Exterior SRA', tipo: 'RURAL / EXTERIOR',
+        unidad: 'Seguridad Pública 1410', telefono: '1410',
+        sectores: 'Sector Rural A — Límite Comunal Poniente (Pelvín Rural, El Guanaco y Camino a Melipilla)',
+        color: '#dc2626',
+        polygon: [
+          [-33.5818670,-70.8926948],[-33.5946161,-70.9095253],[-33.5895132,-70.9203654],[-33.5948814,-70.9248611],
+          [-33.6025771,-70.9282913],[-33.6059903,-70.9332364],[-33.6080736,-70.9388567],[-33.6126669,-70.9479754],
+          [-33.6125439,-70.9414571],[-33.6155521,-70.9374273],[-33.6185138,-70.9344207],[-33.6318572,-70.9260947],
+          [-33.6342313,-70.9290449],[-33.6049270,-70.9102480],[-33.5998495,-70.9060888],[-33.5989202,-70.9051875],
+          [-33.5988844,-70.9028701],[-33.5947021,-70.8970336],[-33.5929862,-70.8967761],[-33.5916993,-70.8954028],
+          [-33.5818670,-70.8926948]
+        ]
+      },
+      {
+        id: 'SRA1', nombre: 'Exterior SRA1', tipo: 'RURAL / EXTERIOR',
+        unidad: 'Seguridad Pública 1410', telefono: '1410',
+        sectores: 'Sector Rural A1 — Límite Comunal Norte (Santa Corina Rural, Camino El Rosario y Padre Hurtado)',
+        color: '#e11d48',
+        polygon: [
+          [-33.5818670,-70.8926948],[-33.5696892,-70.8734846],[-33.5729085,-70.8661021],[-33.5780574,-70.8489233],
+          [-33.5830393,-70.8311823],[-33.5960581,-70.8368439],[-33.5969380,-70.8458749],[-33.5946648,-70.8501008],
+          [-33.5920942,-70.8611528],[-33.5912005,-70.8611099],[-33.5913686,-70.8611541],[-33.5958014,-70.8718401],
+          [-33.5949256,-70.8849721],[-33.5948988,-70.8850580],[-33.5975261,-70.8930854],[-33.5916993,-70.8954028],
+          [-33.5818670,-70.8926948]
+        ]
+      },
+      {
+        id: 'SRB', nombre: 'Exterior SRB', tipo: 'RURAL / EXTERIOR',
+        unidad: 'Seguridad Pública 1410', telefono: '1410',
+        sectores: 'Sector Rural B — Límite Comunal Sur y Oriente (Malloco Rural, Berlín Sur, Talagante / Calera de Tango)',
+        color: '#d97706',
+        polygon: [
+          [-33.5960581,-70.8368439],[-33.6037391,-70.8390171],[-33.6086723,-70.8397137],[-33.6099142,-70.8239988],
+          [-33.6105416,-70.8382043],[-33.6151086,-70.8428402],[-33.6139199,-70.8516701],[-33.6208084,-70.8581256],
+          [-33.6217507,-70.8525280],[-33.6253609,-70.8540189],[-33.6239501,-70.8609301],[-33.6265002,-70.8627444],
+          [-33.6319672,-70.9193528],[-33.6318572,-70.9260947],[-33.6342313,-70.9290449],[-33.6346601,-70.9145395],
+          [-33.6301936,-70.9105913],[-33.6270772,-70.8830877],[-33.6310794,-70.8668657],[-33.6206036,-70.8591053],
+          [-33.6154013,-70.8554403],[-33.6100559,-70.8521191],[-33.6054274,-70.8493940],[-33.5969380,-70.8458749],
+          [-33.5960581,-70.8368439]
+        ]
+      }
+    ];
+  },
+
+  getQuadrants() {
+    try {
+      const saved = localStorage.getItem('INSPECTOR_CUSTOM_QUADRANTS_V1');
+      if (saved) {
+        const arr = JSON.parse(saved);
+        if (Array.isArray(arr) && arr.length > 0) return arr;
+      }
+    } catch (e) {}
+    return this._getDefaultQuadrants();
+  },
+
+  _pointInPolygon(lat, lng, poly) {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const xi = poly[i][0], yi = poly[i][1];
+      const xj = poly[j][0], yj = poly[j][1];
+      const intersect = ((yi > lng) !== (yj > lng)) &&
+        (lat < (xj - xi) * (lng - yi) / ((yj - yi) || 1e-12) + xi);
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  },
+
+  detectQuadrant(lat, lng) {
+    const la = Number(lat), ln = Number(lng);
+    if (isNaN(la) || isNaN(ln)) return null;
+    const qs = this.getQuadrants();
+    for (let i = 0; i < qs.length; i++) {
+      if (qs[i].polygon && qs[i].polygon.length >= 3 && this._pointInPolygon(la, ln, qs[i].polygon)) {
+        return qs[i];
+      }
+    }
+    return null;
+  },
+
+  _polygonCentroid(poly) {
+    let latSum = 0, lngSum = 0;
+    poly.forEach(p => { latSum += p[0]; lngSum += p[1]; });
+    return [latSum / poly.length, lngSum / poly.length];
+  },
+
   renderMap(tableName) {
     const tablesWithLoc = ['COMERCIO', 'FUERA DE HORA', 'GIGANTOGRAFIA', 'PATENTES EN MORA', 'ASISTENCIA', 'REPORTE', 'SEMANA PEÑAFLORINA', 'FERIAS NAVIDEÑAS'];
     let opts = '';
@@ -823,36 +1068,293 @@ const App = {
       opts += '<option value="' + t + '"' + (t === tableName ? ' selected' : '') + '>' + this.esc(this.boot.schemas[t].label) + '</option>';
     });
 
-    document.getElementById('appView').innerHTML =
-      '<div class="section-header"><h2>Mapa de Fiscalizaciones</h2>' +
-      '<select class="form-control" style="max-width:260px;" onchange="App.renderMap(this.value)">' + opts + '</select>' +
-      '</div><div id="mapContainer"></div>';
+    const hasCustom = Boolean(localStorage.getItem('INSPECTOR_CUSTOM_QUADRANTS_V1'));
+    this.mapState = {
+      tableName,
+      points: [],
+      selectedQuadrant: 'ALL',
+      showGeofences: true,
+      geofenceLayer: null,
+      markersLayer: null,
+      polyMap: {}
+    };
 
-    this.showLoader('Cargando ubicaciones GPS...');
+    document.getElementById('appView').innerHTML =
+      '<div class="section-header" style="margin-bottom:10px;">' +
+      '<h2>Mapa de Fiscalizaciones por Cuadrantes</h2>' +
+      '<select class="form-control" style="max-width:260px;" onchange="App.renderMap(this.value)">' + opts + '</select>' +
+      '</div>' +
+      '<div class="map-toolbar">' +
+      '<label style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;cursor:pointer;">' +
+      '<input type="checkbox" id="chkShowGeofences" checked onchange="App.toggleGeofences(this.checked)"> Mostrar Geocercas (Cuadrantes)' +
+      '</label>' +
+      '<button class="btn btn-outline btn-sm" onclick="document.getElementById(\'kmlImportInput\').click()">' +
+      '<span class="material-icons" style="font-size:16px;">upload_file</span> Importar KML / GeoJSON</button>' +
+      '<input type="file" id="kmlImportInput" accept=".kml,.geojson,.json" style="display:none;" onchange="App.importQuadrantsFile(this)">' +
+      (hasCustom ? '<button class="btn btn-outline btn-sm" onclick="App.resetDefaultQuadrants()">Restaurar Oficiales</button>' : '') +
+      '<button class="btn btn-success btn-sm" style="margin-left:auto;" onclick="App.exportMapQuadrantXLSX()">' +
+      '<span class="material-icons" style="font-size:16px;">table_view</span> Exportar Excel por Cuadrante</button>' +
+      '</div>' +
+      '<div id="quadrantStrip" class="quadrant-strip"></div>' +
+      '<div id="quadrantInfoBar" class="quadrant-info-bar" style="display:none;"></div>' +
+      '<div id="mapContainer"></div>';
+
+    this.showLoader('Cargando ubicaciones GPS y geocercas...');
     google.script.run
       .withSuccessHandler(points => {
         this.hideLoader();
+        const enriched = (points || []).map(p => {
+          const q = this.detectQuadrant(p.lat, p.lng);
+          return Object.assign({}, p, {
+            quadrantId: q ? q.id : 'SIN_CUADRANTE',
+            quadrantName: q ? q.nombre : 'Fuera de Cuadrante',
+            quadrantUnit: q ? q.unidad : '-',
+            quadrantColor: q ? q.color : '#64748b'
+          });
+        });
+        this.mapState.points = enriched;
+
         if (this.leafletMap) { this.leafletMap.remove(); this.leafletMap = null; }
-        this.leafletMap = L.map('mapContainer').setView([-33.6063, -70.8764], 13);
+        this.leafletMap = L.map('mapContainer').setView([-33.6085, -70.8880], 13);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
           attribution: '&copy; OpenStreetMap'
         }).addTo(this.leafletMap);
 
-        const bounds = [];
-        (points || []).forEach(p => {
-          bounds.push([p.lat, p.lng]);
-          L.marker([p.lat, p.lng]).addTo(this.leafletMap)
-            .bindPopup('<strong>' + this.esc(p.title) + '</strong><br>' +
-              this.esc(p.subtitle) + '<br><small>Inspector: ' + this.esc(p.inspector) + ' | ' + this.esc(p.fecha) + '</small>');
-        });
-        if (bounds.length > 0) this.leafletMap.fitBounds(bounds, { padding: [30, 30] });
-        else this.toast('No se encontraron registros con coordenadas GPS en ' + tableName);
+        this.mapState.geofenceLayer = L.layerGroup().addTo(this.leafletMap);
+        this.mapState.markersLayer = L.layerGroup().addTo(this.leafletMap);
+
+        this._renderQuadrantControlsAndLayers();
       })
       .withFailureHandler(err => {
         this.hideLoader();
         this.toast('Error mapa: ' + err.message);
       })
       .apiGetMapPoints(tableName);
+  },
+
+  _renderQuadrantControlsAndLayers() {
+    const st = this.mapState;
+    if (!st || !this.leafletMap) return;
+    const qs = this.getQuadrants();
+    const counts = { ALL: st.points.length, SIN_CUADRANTE: 0 };
+    qs.forEach(q => { counts[q.id] = 0; });
+    st.points.forEach(p => {
+      if (counts[p.quadrantId] !== undefined) counts[p.quadrantId]++;
+      else counts.SIN_CUADRANTE++;
+    });
+
+    // 1. Render chips resumen arriba del mapa
+    let chipsHtml = '<button class="quadrant-chip ' + (st.selectedQuadrant === 'ALL' ? 'active' : '') + '" onclick="App.selectMapQuadrant(\'ALL\')">' +
+      '<span class="material-icons" style="font-size:15px;">public</span> Todos <span class="quadrant-count">' + counts.ALL + '</span></button>';
+    qs.forEach(q => {
+      const isAct = st.selectedQuadrant === q.id;
+      chipsHtml += '<button class="quadrant-chip ' + (isAct ? 'active' : '') + '" onclick="App.selectMapQuadrant(\'' + this.escJs(q.id) + '\')">' +
+        '<span class="quadrant-dot" style="background:' + q.color + ';"></span>' +
+        this.esc(q.id) + ' <span class="quadrant-count">' + (counts[q.id] || 0) + '</span></button>';
+    });
+    if (counts.SIN_CUADRANTE > 0) {
+      chipsHtml += '<button class="quadrant-chip ' + (st.selectedQuadrant === 'SIN_CUADRANTE' ? 'active' : '') + '" onclick="App.selectMapQuadrant(\'SIN_CUADRANTE\')">' +
+        '<span class="quadrant-dot" style="background:#64748b;"></span> Fuera de límite <span class="quadrant-count">' + counts.SIN_CUADRANTE + '</span></button>';
+    }
+    const stripEl = document.getElementById('quadrantStrip');
+    if (stripEl) stripEl.innerHTML = chipsHtml;
+
+    // 2. Barra de información del cuadrante seleccionado
+    const infoEl = document.getElementById('quadrantInfoBar');
+    if (infoEl) {
+      const selQ = qs.find(q => q.id === st.selectedQuadrant);
+      if (selQ) {
+        infoEl.style.display = 'flex';
+        infoEl.innerHTML =
+          '<div><strong style="color:' + selQ.color + ';">' + this.esc(selQ.nombre) + ' (' + this.esc(selQ.tipo) + ')</strong> — ' +
+          this.esc(selQ.unidad) + ' · Tel: <strong>' + this.esc(selQ.telefono) + '</strong><br>' +
+          '<span style="color:var(--muted);">Sectores: ' + this.esc(selQ.sectores) + '</span></div>' +
+          '<span class="badge badge-blue">' + (counts[selQ.id] || 0) + ' fiscalización(es)</span>';
+      } else {
+        infoEl.style.display = 'none';
+      }
+    }
+
+    // 3. Dibujar polígonos de geocerca (Límite Comunal + Rurales debajo + Urbanos KMZ encima)
+    st.geofenceLayer.clearLayers();
+    st.polyMap = {};
+    if (st.showGeofences) {
+      const communalBorder = [
+        [-33.5729085,-70.8661021],[-33.5696892,-70.8734846],[-33.5818670,-70.8926948],[-33.5946161,-70.9095253],
+        [-33.5895132,-70.9203654],[-33.5948814,-70.9248611],[-33.6025771,-70.9282913],[-33.6059903,-70.9332364],
+        [-33.6080736,-70.9388567],[-33.6126669,-70.9479754],[-33.6125439,-70.9414571],[-33.6155521,-70.9374273],
+        [-33.6185138,-70.9344207],[-33.6318572,-70.9260947],[-33.6319672,-70.9193528],[-33.6265002,-70.8627444],
+        [-33.6239501,-70.8609301],[-33.6253609,-70.8540189],[-33.6217507,-70.8525280],[-33.6208084,-70.8581256],
+        [-33.6139199,-70.8516701],[-33.6151086,-70.8428402],[-33.6105416,-70.8382043],[-33.6099142,-70.8239988],
+        [-33.6086723,-70.8397137],[-33.6037391,-70.8390171],[-33.5960581,-70.8368439],[-33.5830393,-70.8311823],
+        [-33.5780574,-70.8489233],[-33.5729085,-70.8661021]
+      ];
+      L.polyline(communalBorder, { color: '#d32f2f', weight: 3, opacity: 0.85 }).addTo(st.geofenceLayer);
+
+      const drawOrder = qs.slice().sort((a, b) => (a.tipo === 'RURAL / EXTERIOR' ? -1 : 1) - (b.tipo === 'RURAL / EXTERIOR' ? -1 : 1));
+      drawOrder.forEach(q => {
+        if (!q.polygon || q.polygon.length < 3) return;
+        const isSel = st.selectedQuadrant === q.id;
+        const isDim = st.selectedQuadrant !== 'ALL' && !isSel;
+        const isRural = q.tipo === 'RURAL / EXTERIOR';
+        const poly = L.polygon(q.polygon, {
+          color: q.color,
+          weight: isSel ? 3.5 : (isRural ? 1.8 : 2.4),
+          opacity: isDim ? 0.35 : 0.92,
+          fillColor: q.color,
+          fillOpacity: isSel ? 0.28 : (isDim ? 0.04 : (isRural ? 0.07 : 0.20)),
+          dashArray: isRural ? '6, 5' : null
+        });
+        poly.on('click', () => this.selectMapQuadrant(q.id));
+        poly.bindTooltip(
+          '<div class="quadrant-map-label" style="border-left:4px solid ' + q.color + ';">' + this.esc(q.id) + ' (' + (counts[q.id] || 0) + ')</div>',
+          { permanent: true, direction: 'center', className: 'leaflet-tooltip-plain', opacity: isDim ? 0.45 : 0.95 }
+        );
+        poly.addTo(st.geofenceLayer);
+        st.polyMap[q.id] = poly;
+      });
+    }
+
+    // 4. Dibujar marcadores filtrados
+    st.markersLayer.clearLayers();
+    const filtered = st.selectedQuadrant === 'ALL'
+      ? st.points
+      : st.points.filter(p => p.quadrantId === st.selectedQuadrant);
+
+    const bounds = [];
+    filtered.forEach(p => {
+      bounds.push([p.lat, p.lng]);
+      L.circleMarker([p.lat, p.lng], {
+        radius: 7,
+        color: '#ffffff',
+        weight: 2,
+        fillColor: p.quadrantColor || '#2563eb',
+        fillOpacity: 0.92
+      }).addTo(st.markersLayer)
+        .bindPopup(
+          '<div style="font-size:12.5px;line-height:1.45;">' +
+          '<span style="display:inline-block;background:' + p.quadrantColor + ';color:#fff;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;margin-bottom:4px;">' + this.esc(p.quadrantName) + '</span><br>' +
+          '<strong>' + this.esc(p.title) + '</strong><br>' +
+          this.esc(p.subtitle) + '<br>' +
+          '<small>Inspector: ' + this.esc(p.inspector) + ' | ' + this.esc(p.fecha) + '</small></div>'
+        );
+    });
+
+    if (st.selectedQuadrant !== 'ALL' && st.polyMap[st.selectedQuadrant]) {
+      this.leafletMap.fitBounds(st.polyMap[st.selectedQuadrant].getBounds(), { padding: [26, 26] });
+    } else if (bounds.length > 0) {
+      this.leafletMap.fitBounds(bounds, { padding: [28, 28], maxZoom: 15 });
+    }
+  },
+
+  selectMapQuadrant(quadrantId) {
+    if (!this.mapState) return;
+    this.mapState.selectedQuadrant = (this.mapState.selectedQuadrant === quadrantId && quadrantId !== 'ALL') ? 'ALL' : quadrantId;
+    this._renderQuadrantControlsAndLayers();
+  },
+
+  toggleGeofences(show) {
+    if (!this.mapState) return;
+    this.mapState.showGeofences = show;
+    this._renderQuadrantControlsAndLayers();
+  },
+
+  importQuadrantsFile(input) {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const text = String(e.target.result || '');
+        const palette = ['#2563eb', '#0891b2', '#7c3aed', '#059669', '#d97706', '#dc2626', '#e11d48', '#65a30d', '#0284c7', '#9333ea'];
+        const imported = [];
+
+        if (file.name.toLowerCase().endsWith('.kml')) {
+          const doc = new DOMParser().parseFromString(text, 'text/xml');
+          const placemarks = doc.querySelectorAll('Placemark');
+          placemarks.forEach((pm, idx) => {
+            const name = (pm.querySelector('name') ? pm.querySelector('name').textContent : ('Cuadrante ' + (idx + 1))).trim();
+            const desc = (pm.querySelector('description') ? pm.querySelector('description').textContent : '').trim();
+            const coordEl = pm.querySelector('Polygon coordinates, coordinates');
+            if (!coordEl) return;
+            const pts = coordEl.textContent.trim().split(/\s+/).map(pair => {
+              const parts = pair.split(',');
+              return [Number(parts[1]), Number(parts[0])];
+            }).filter(p => !isNaN(p[0]) && !isNaN(p[1]));
+            if (pts.length >= 3) {
+              imported.push({
+                id: name.toUpperCase().slice(0, 16),
+                nombre: name,
+                tipo: /SR/i.test(name) ? 'RURAL / EXTERIOR' : 'URBANO',
+                unidad: /SR/i.test(name) ? 'Seguridad Pública 1410' : 'Carabineros Peñaflor',
+                telefono: '1410',
+                sectores: desc || 'Geocerca importada desde KML',
+                color: palette[idx % palette.length],
+                polygon: pts
+              });
+            }
+          });
+        } else {
+          const geo = JSON.parse(text);
+          const feats = geo.features || [];
+          feats.forEach((f, idx) => {
+            if (!f.geometry) return;
+            const ring = f.geometry.type === 'Polygon' ? f.geometry.coordinates[0]
+              : (f.geometry.type === 'MultiPolygon' ? f.geometry.coordinates[0][0] : null);
+            if (!ring || ring.length < 3) return;
+            const props = f.properties || {};
+            const name = String(props.name || props.NOMBRE || props.cuadrante || props.CUADRANTE || ('Cuadrante ' + (idx + 1))).trim();
+            imported.push({
+              id: name.toUpperCase().slice(0, 16),
+              nombre: name,
+              tipo: /SR/i.test(name) ? 'RURAL / EXTERIOR' : 'URBANO',
+              unidad: props.unidad || (/SR/i.test(name) ? 'Seguridad Pública 1410' : 'Carabineros Peñaflor'),
+              telefono: props.telefono || '1410',
+              sectores: props.sectores || props.description || 'Geocerca importada desde GeoJSON',
+              color: props.color || palette[idx % palette.length],
+              polygon: ring.map(c => [Number(c[1]), Number(c[0])])
+            });
+          });
+        }
+
+        if (imported.length === 0) {
+          this.toast('No se encontraron polígonos válidos en el archivo.');
+          return;
+        }
+        localStorage.setItem('INSPECTOR_CUSTOM_QUADRANTS_V1', JSON.stringify(imported));
+        this.toast('Se importaron ' + imported.length + ' geocercas correctamente.');
+        this.renderMap(this.mapState.tableName);
+      } catch (err) {
+        this.toast('Error al leer archivo KML/GeoJSON: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+  },
+
+  resetDefaultQuadrants() {
+    localStorage.removeItem('INSPECTOR_CUSTOM_QUADRANTS_V1');
+    this.toast('Cuadrantes oficiales de Peñaflor restaurados.');
+    this.renderMap(this.mapState ? this.mapState.tableName : 'COMERCIO');
+  },
+
+  exportMapQuadrantXLSX() {
+    const st = this.mapState;
+    if (!st || !st.points) return;
+    const rows = st.selectedQuadrant === 'ALL'
+      ? st.points
+      : st.points.filter(p => p.quadrantId === st.selectedQuadrant);
+    const headers = ['MODULO', 'CUADRANTE', 'UNIDAD', 'TITULO', 'DETALLE', 'INSPECTOR', 'FECHA', 'LATITUD', 'LONGITUD'];
+    const aoa = [headers];
+    rows.forEach(p => {
+      aoa.push([st.tableName, p.quadrantName, p.quadrantUnit, p.title, p.subtitle, p.inspector, p.fecha, p.lat, p.lng]);
+    });
+    if (typeof XLSX !== 'undefined') {
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      XLSX.utils.book_append_sheet(wb, ws, 'CUADRANTES');
+      XLSX.writeFile(wb, 'Mapa_' + st.tableName.replace(/\s+/g, '_') + '_' + st.selectedQuadrant + '_' + new Date().toISOString().slice(0, 10) + '.xlsx');
+      this.toast('Excel por cuadrante descargado (' + rows.length + ' registros).');
+    }
   },
 
   // ==========================================================================
@@ -1183,11 +1685,24 @@ const App = {
     });
     const pendientes = Math.max(ocupados - (asisten + noAsisten), 0);
 
-    let inspectorOpts = '<option value="">-- Inspector que toma asistencia --</option>';
-    (this.boot.funcionarios || []).forEach(f => {
+    const inspectors = this.getInspectorsList();
+    let inspectorOpts = '<option value="">-- Seleccionar Inspector a Cargo --</option>';
+    inspectors.forEach(f => {
       const sel = st.inspector === f.nombre ? ' selected' : '';
-      inspectorOpts += '<option value="' + this.esc(f.nombre) + '"' + sel + '>' + this.esc(f.nombre) + '</option>';
+      inspectorOpts += '<option value="' + this.esc(f.nombre) + '"' + sel + '>' + this.esc(f.nombre) + (f.rol ? ' (' + this.esc(f.rol) + ')' : '') + '</option>';
     });
+    const acompOpts = inspectors.map(f => ({
+      value: f.nombre,
+      label: f.nombre + (f.rol ? ' (' + f.rol + ')' : '')
+    }));
+    const acompDropdownHtml = this._renderMultiSelectDropdown(
+      'feria_acomp',
+      'INSPECTOR ACOMPAÑANTE',
+      acompOpts,
+      st.inspectorAcompanante || [],
+      'Seleccionar acompañante(s)...',
+      'App.syncFeriaAcompanantes()'
+    );
 
     const filterBtns = [
       { id: 'ALL', label: 'Todos (1-100)' },
@@ -1227,13 +1742,15 @@ const App = {
       '<button class="btn btn-success btn-sm" onclick="App.exportFeriaAttendanceXLSX()"><span class="material-icons" style="font-size:16px;">table_view</span> Excel Asistencia (.xlsx)</button>' +
       '</div></div>';
 
-    // Barra de fecha e inspector
+    // Barra de fecha e inspectores
     html += '<div class="card" style="padding:12px 14px;margin-bottom:14px;">' +
-      '<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;">' +
+      '<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start;">' +
       '<div><label style="font-size:11px;font-weight:700;color:var(--muted);display:block;">FECHA JORNADA</label>' +
       '<input type="date" class="form-control" style="width:165px;" value="' + this.esc(st.fecha) + '" onchange="App.feriaState.fecha=this.value;App.renderFeriaFicha(App.feriaState.feria)"></div>' +
-      '<div style="flex:1;min-width:210px;"><label style="font-size:11px;font-weight:700;color:var(--muted);display:block;">INSPECTOR RESPONSABLE</label>' +
+      '<div style="flex:1;min-width:210px;"><label style="font-size:11px;font-weight:700;color:var(--muted);display:block;">INSPECTOR A CARGO</label>' +
       '<select class="form-control" onchange="App.feriaState.inspector=this.value">' + inspectorOpts + '</select></div>' +
+      '<div style="flex:1;min-width:230px;"><label style="font-size:11px;font-weight:700;color:var(--muted);display:block;">INSPECTOR ACOMPAÑANTE DEL PROCEDIMIENTO</label>' +
+      acompDropdownHtml + '</div>' +
       '<div style="flex:1;min-width:210px;"><label style="font-size:11px;font-weight:700;color:var(--muted);display:block;">BUSCAR PUESTO / FERIANTE</label>' +
       '<input type="search" class="form-control" placeholder="N° puesto, nombre, RUT o ROL..." value="' + this.esc(st.query) + '" oninput="App.feriaState.query=this.value;App._paintFeriaFicha()"></div>' +
       '</div></div>';
@@ -1318,6 +1835,12 @@ const App = {
     });
   },
 
+  syncFeriaAcompanantes() {
+    this.feriaState.inspectorAcompanante = Array.from(
+      document.querySelectorAll('#ms_opts_feria_acomp input[type="checkbox"]:checked')
+    ).map(c => c.value);
+  },
+
   markFeriaAttendance(puestoNum, estado, medio) {
     const st = this.feriaState;
     const stall = st.stalls.find(s => s.puesto === Number(puestoNum));
@@ -1336,6 +1859,7 @@ const App = {
       estado: estado,
       medio: medio || 'MANUAL',
       inspector: st.inspector || (this.boot && this.boot.user ? this.boot.user.email : ''),
+      inspectorAcompanante: (st.inspectorAcompanante || []).join(' , '),
       ubicacion: r['UBICACION'] || '',
       observaciones: r['OBSERVACIONES'] || ''
     };
@@ -1692,7 +2216,7 @@ const App = {
     const headers = [
       'FECHA_JORNADA', 'FERIA', 'N_PUESTO', 'CODIGO_QR', 'ID_FERIANTE',
       'NOMBRE_DUENO', 'RUT_DUENO', 'ROL', 'PATENTE', 'GIRO', 'DIA',
-      'UBICACION_PUESTO', 'ESTADO_ASISTENCIA', 'MEDIO_INGRESO', 'HORA_MARCA', 'INSPECTOR', 'OBSERVACIONES'
+      'UBICACION_PUESTO', 'ESTADO_ASISTENCIA', 'MEDIO_INGRESO', 'HORA_MARCA', 'INSPECTOR A CARGO', 'INSPECTOR ACOMPAÑANTE', 'OBSERVACIONES'
     ];
     const aoa = [headers];
     st.stalls.forEach(s => {
@@ -1703,7 +2227,7 @@ const App = {
         r['NOMBRE DUEÑO'] || 'DISPONIBLE', r['RUT DUEÑO'] || '', r['ROL'] || '',
         r['PATENTE'] || '', r['GIRO'] || '', r['DIA'] || '', r['UBICACION'] || '',
         m.estado || (s.record ? 'PENDIENTE' : 'SIN ASIGNAR'),
-        m.medio || '', m.hora || '', m.inspector || '', r['OBSERVACIONES'] || ''
+        m.medio || '', m.hora || '', m.inspector || '', m.inspectorAcompanante || '', r['OBSERVACIONES'] || ''
       ]);
     });
 

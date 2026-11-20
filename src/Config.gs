@@ -27,6 +27,19 @@ const APP_CONFIG = {
   ],
   FERIA_MAX_PUESTOS: 100,
 
+  // Listado oficial de funcionarios / inspectores (sin entradas de EQUIPO)
+  DEFAULT_FUNCIONARIOS: [
+    { nombre: 'Luis Zamorano Vásquez', rol: 'Inspector Comercial' },
+    { nombre: 'JHON NAVARRETE', rol: 'INSPECTOR' },
+    { nombre: 'SERGIO OYARCE', rol: 'INSPECTOR' },
+    { nombre: 'ENRIQUE RODRIGUEZ', rol: 'INSPECTOR' },
+    { nombre: 'NICOLAS ZAMORANO', rol: 'INSPECTOR' },
+    { nombre: 'LEONARDO VALENZUELA', rol: 'INSPECTOR' },
+    { nombre: 'LEONARDO HERRERA', rol: 'INSPECTOR' },
+    { nombre: 'PATRICIO CANCINO', rol: 'INSPECTOR' },
+    { nombre: 'TAMARA MARTINEZ', rol: 'INSPECTOR' }
+  ],
+
   // Hojas de cálculo originales de AppSheet
   SPREADSHEETS: {
     MAIN: '1jsgsXgkJ2UfW9cZhbw02HUK795lyYjB_uxPwLizyp7I',
@@ -112,7 +125,7 @@ const TABLE_SCHEMAS = {
     labelCol: 'NOMBRE LOCAL',
     hasPdfBot: true,
     formColumns: [
-      'INSPECTOR', 'FECHA HORA', 'TIPO DE INTERVENCION', 'TIPO FISCALIZACION',
+      'INSPECTOR', 'INSPECTOR ACOMPAÑANTE', 'FECHA HORA', 'TIPO DE INTERVENCION', 'TIPO FISCALIZACION',
       'DIRECCION', 'TELEFONO', 'EMAIL', 'NOMBRE LOCAL',
       'NOMBRE DUEÑO O RAZON SOCIAL', 'RUT', 'PRODUCTOS QUE VENDE', 'GIRO',
       'DOCUMENTO FISCALIZADO', 'CUENTA CON PATENTE', 'EXHIBE PATENTE',
@@ -120,12 +133,13 @@ const TABLE_SCHEMAS = {
       'INTERVENCION', 'OTROS ANTECEDENTES', 'FOTO 1', 'FOTO 2', 'FOTO 3', 'FIRMA'
     ],
     tableColumns: [
-      'FECHA HORA', 'INSPECTOR', 'NOMBRE LOCAL', 'RUT', 'DIRECCION',
+      'FECHA HORA', 'INSPECTOR', 'INSPECTOR ACOMPAÑANTE', 'NOMBRE LOCAL', 'RUT', 'DIRECCION',
       'CUENTA CON PATENTE', 'PERMISO AL DIA', 'PDF'
     ],
     columns: [
       { name: 'ID', type: 'Text', isKey: true, initial: 'UNIQUEID', hiddenInForm: true },
-      { name: 'INSPECTOR', type: 'Ref', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
+      { name: 'INSPECTOR', displayName: 'INSPECTOR A CARGO', type: 'Ref', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
+      { name: 'INSPECTOR ACOMPAÑANTE', displayName: 'INSPECTOR ACOMPAÑANTE DEL PROCEDIMIENTO', type: 'RefList', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
       { name: 'FECHA HORA', type: 'DateTime', initial: 'NOW' },
       { name: 'TIPO DE INTERVENCION', type: 'EnumList', values: ['Fiscalización de rutina', 'Denuncia ciudadana', 'Operativo conjunto', 'Inspección por reincidencia', 'Control nocturno', 'Control de patentes', 'Otro'] },
       { name: 'TIPO FISCALIZACION', type: 'EnumList', values: ['Inspección', 'Infracción cursada', 'Clausura', 'Notificación', 'Citación al Juzgado', 'Advertencia verbal', 'Decomiso', 'Otro'] },
@@ -162,7 +176,7 @@ const TABLE_SCHEMAS = {
     labelCol: 'NOMBRE LOCAL',
     hasPdfBot: true,
     formColumns: [
-      'INSPECTOR', 'FECHA HORA', 'TIPO DE INTERVENCION', 'TIPO FISCALIZACION',
+      'INSPECTOR', 'INSPECTOR ACOMPAÑANTE', 'FECHA HORA', 'TIPO DE INTERVENCION', 'TIPO FISCALIZACION',
       'TELEFONO', 'EMAIL', 'DIRECCION', 'NOMBRE LOCAL',
       'NOMBRE DUEÑO O RAZON SOCIAL', 'RUT', 'PRODUCTOS QUE VENDE', 'GIRO',
       'DOCUMENTO FISCALIZADO', 'CUENTA CON PATENTE', 'EXHIBE PATENTE',
@@ -171,12 +185,13 @@ const TABLE_SCHEMAS = {
       'FOTO 1', 'FOTO 2', 'FOTO 3', 'FIRMA'
     ],
     tableColumns: [
-      'FECHA HORA', 'INSPECTOR', 'NOMBRE LOCAL', 'RUT', 'DIRECCION',
+      'FECHA HORA', 'INSPECTOR', 'INSPECTOR ACOMPAÑANTE', 'NOMBRE LOCAL', 'RUT', 'DIRECCION',
       'CUENTA CON PATENTE', 'PERMISO AL DIA', 'PDF'
     ],
     columns: [
       { name: 'ID', type: 'Text', isKey: true, initial: 'UNIQUEID', hiddenInForm: true },
-      { name: 'INSPECTOR', type: 'Ref', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
+      { name: 'INSPECTOR', displayName: 'INSPECTOR A CARGO', type: 'Ref', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
+      { name: 'INSPECTOR ACOMPAÑANTE', displayName: 'INSPECTOR ACOMPAÑANTE DEL PROCEDIMIENTO', type: 'RefList', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
       { name: 'FECHA HORA', type: 'DateTime', initial: 'NOW' },
       { name: 'TIPO DE INTERVENCION', type: 'EnumList', values: ['Fiscalización de rutina', 'Denuncia ciudadana', 'Operativo conjunto', 'Inspección por reincidencia', 'Control nocturno', 'Control de patentes', 'Otro'] },
       { name: 'TIPO FISCALIZACION', type: 'EnumList', values: ['Inspección', 'Infracción cursada', 'Clausura', 'Notificación', 'Citación al Juzgado', 'Advertencia verbal', 'Decomiso', 'Otro'] },
@@ -214,7 +229,7 @@ const TABLE_SCHEMAS = {
     labelCol: 'NOMBRE LOCAL',
     hasPdfBot: true,
     formColumns: [
-      'INSPECTOR', 'FECHA HORA', 'TIPO DE INTERVENCION', 'TIPO FISCALIZACION',
+      'INSPECTOR', 'INSPECTOR ACOMPAÑANTE', 'FECHA HORA', 'TIPO DE INTERVENCION', 'TIPO FISCALIZACION',
       'EMAIL', 'TELEFONO', 'DIRECCION', 'NOMBRE LOCAL',
       'NOMBRE DUEÑO O RAZON SOCIAL', 'RUT', 'PRODUCTOS QUE VENDE', 'GIRO',
       'METRAJE DE LA PUBLICIDAD', 'PUBLICIDAD LUMINOSA', 'PAGA PUBLICIDAD',
@@ -222,12 +237,13 @@ const TABLE_SCHEMAS = {
       'OTROS ANTECEDENTES', 'FOTO 1', 'FOTO 2', 'FOTO 3', 'FIRMA'
     ],
     tableColumns: [
-      'FECHA HORA', 'INSPECTOR', 'NOMBRE LOCAL', 'DIRECCION',
+      'FECHA HORA', 'INSPECTOR', 'INSPECTOR ACOMPAÑANTE', 'NOMBRE LOCAL', 'DIRECCION',
       'METRAJE DE LA PUBLICIDAD', 'PAGA PUBLICIDAD', 'PDF'
     ],
     columns: [
       { name: 'ID', type: 'Text', isKey: true, initial: 'UNIQUEID', hiddenInForm: true },
-      { name: 'INSPECTOR', type: 'Ref', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
+      { name: 'INSPECTOR', displayName: 'INSPECTOR A CARGO', type: 'Ref', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
+      { name: 'INSPECTOR ACOMPAÑANTE', displayName: 'INSPECTOR ACOMPAÑANTE DEL PROCEDIMIENTO', type: 'RefList', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
       { name: 'FECHA HORA', type: 'DateTime', initial: 'NOW' },
       { name: 'TIPO DE INTERVENCION', type: 'EnumList', values: ['Fiscalización de rutina', 'Denuncia ciudadana', 'Inspección por reincidencia', 'Operativo conjunto', 'Control nocturno', 'Control de patentes', 'Otro', 'Control de Publicidad'] },
       { name: 'TIPO FISCALIZACION', type: 'EnumList', values: ['Infraestructura', 'Infracción cursada', 'Clausura', 'Notificación', 'Citación al Juzgado', 'Advertencia verbal', 'Decomiso', 'Otro'] },
@@ -262,9 +278,14 @@ const TABLE_SCHEMAS = {
     keyCol: 'ID',
     labelCol: 'NOMBRE LOCAL COMERCIAL',
     hasPdfBot: true,
+    formColumns: [
+      'FISCALIZADOR', 'INSPECTOR ACOMPAÑANTE', 'FECHA FISCALIZACION', 'NUMERO',
+      'NOMBRE LOCAL COMERCIAL', 'PATENTE', 'ROL', 'DIRECCION',
+      'ESTADO PATENTE', 'VALOR PATENTE', 'OBSERVACIONES', 'EMAIL', 'TELEFONO'
+    ],
     tableColumns: [
       'NUMERO', 'NOMBRE LOCAL COMERCIAL', 'PATENTE', 'ROL',
-      'ESTADO PATENTE', 'VALOR PATENTE', 'FISCALIZADOR', 'FECHA FISCALIZACION'
+      'ESTADO PATENTE', 'VALOR PATENTE', 'FISCALIZADOR', 'INSPECTOR ACOMPAÑANTE', 'FECHA FISCALIZACION'
     ],
     columns: [
       { name: 'ID', type: 'Text', isKey: true, initial: 'UNIQUEID', hiddenInForm: true },
@@ -276,7 +297,8 @@ const TABLE_SCHEMAS = {
       { name: 'ESTADO PATENTE', type: 'Enum', values: ['AL DIA', 'EN MORA'] },
       { name: 'VALOR PATENTE', type: 'Price' },
       { name: 'FECHA FISCALIZACION', type: 'DateTime', initial: 'NOW' },
-      { name: 'FISCALIZADOR', type: 'Ref', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
+      { name: 'FISCALIZADOR', displayName: 'INSPECTOR A CARGO', type: 'Ref', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
+      { name: 'INSPECTOR ACOMPAÑANTE', displayName: 'INSPECTOR ACOMPAÑANTE DEL PROCEDIMIENTO', type: 'RefList', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
       { name: 'OBSERVACIONES', type: 'LongText' },
       { name: 'EMAIL', type: 'Email' },
       { name: 'TELEFONO', type: 'Phone' }
@@ -291,10 +313,15 @@ const TABLE_SCHEMAS = {
     keyCol: 'ID',
     labelCol: 'FUNCIONARIO',
     hasPdfBot: true,
-    tableColumns: ['FECHA HORA', 'FUNCIONARIO', 'A QUIEN LE INFORMA', 'REPORTE', 'PDF'],
+    formColumns: [
+      'FUNCIONARIO', 'INSPECTOR ACOMPAÑANTE', 'FECHA HORA', 'REPORTE',
+      'A QUIEN LE INFORMA', 'UBICACION', 'FOTO 1', 'FOTO 2', 'FIRMA'
+    ],
+    tableColumns: ['FECHA HORA', 'FUNCIONARIO', 'INSPECTOR ACOMPAÑANTE', 'A QUIEN LE INFORMA', 'REPORTE', 'PDF'],
     columns: [
       { name: 'ID', type: 'Text', isKey: true, initial: 'UNIQUEID', hiddenInForm: true },
-      { name: 'FUNCIONARIO', type: 'Ref', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
+      { name: 'FUNCIONARIO', displayName: 'INSPECTOR A CARGO', type: 'Ref', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
+      { name: 'INSPECTOR ACOMPAÑANTE', displayName: 'INSPECTOR ACOMPAÑANTE DEL PROCEDIMIENTO', type: 'RefList', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
       { name: 'FECHA HORA', type: 'DateTime', initial: 'NOW' },
       { name: 'REPORTE', type: 'LongText' },
       { name: 'A QUIEN LE INFORMA', type: 'EnumList', values: ['DAVID HERNANDEZ', 'ALVARO NAVARRO', 'JUAN PLAZA', 'CRISTOPHER MACIEL', 'CENCOO / BRAVO', 'JEFE DE TURNO'] },
@@ -315,7 +342,13 @@ const TABLE_SCHEMAS = {
     labelCol: 'NOMBRE DUEÑO',
     hasPdfBot: false,
     defaultSort: { column: 'N° Puesto', asc: true },
-    tableColumns: ['N° Puesto', 'NOMBRE DUEÑO', 'DIA', 'FERIA', 'RUT DUEÑO', 'PATENTE', 'GIRO'],
+    formColumns: [
+      'INSPECTOR', 'INSPECTOR ACOMPAÑANTE', 'FECHA', 'DIA', 'FERIA', 'N° Puesto',
+      'NOMBRE DUEÑO', 'RUT DUEÑO', 'PATENTE', 'Foto patente', 'FOTO DUEÑO', 'ROL', 'GIRO',
+      'FOTO CARNET AYUDANTE', 'FOTO CARNET AYUDANTE_15', 'FOTO CARNET AYUDANTE_16',
+      'UBICACION', 'OBSERVACIONES'
+    ],
+    tableColumns: ['N° Puesto', 'NOMBRE DUEÑO', 'DIA', 'FERIA', 'INSPECTOR', 'INSPECTOR ACOMPAÑANTE', 'RUT DUEÑO', 'PATENTE', 'GIRO'],
     columns: [
       { name: 'ID', type: 'Text', isKey: true, initial: 'UNIQUEID', hiddenInForm: true },
       { name: 'FECHA', type: 'DateTime', initial: 'NOW' },
@@ -335,7 +368,9 @@ const TABLE_SCHEMAS = {
       { name: 'FOTO CARNET AYUDANTE_16', displayName: 'Foto Ayudante 3', type: 'Image' },
       { name: 'UBICACION', type: 'Location' },
       { name: 'PDF', type: 'File', readOnly: true },
-      { name: 'VISTA', type: 'Text', hiddenInForm: true }
+      { name: 'VISTA', type: 'Text', hiddenInForm: true },
+      { name: 'INSPECTOR', displayName: 'INSPECTOR A CARGO', type: 'Ref', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
+      { name: 'INSPECTOR ACOMPAÑANTE', displayName: 'INSPECTOR ACOMPAÑANTE DEL PROCEDIMIENTO', type: 'RefList', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' }
     ]
   },
 
@@ -347,10 +382,15 @@ const TABLE_SCHEMAS = {
     keyCol: 'ID',
     labelCol: 'CONTROLADO POR',
     hasPdfBot: false,
-    tableColumns: ['FECHA HORA', 'CONTROLADO POR', 'ESTADO DE PAGO', 'OBSERVACIONES'],
+    formColumns: [
+      'CONTROLADO POR', 'INSPECTOR ACOMPAÑANTE', 'FECHA HORA', 'ESTADO DE PAGO',
+      'FOTO CARNET', 'FOTO VENTA', 'FOTO PATENTE', 'UBICACION', 'FIRMA', 'OBSERVACIONES'
+    ],
+    tableColumns: ['FECHA HORA', 'CONTROLADO POR', 'INSPECTOR ACOMPAÑANTE', 'ESTADO DE PAGO', 'OBSERVACIONES'],
     columns: [
       { name: 'ID', type: 'Text', isKey: true, initial: 'UNIQUEID', hiddenInForm: true },
-      { name: 'CONTROLADO POR', type: 'Text' },
+      { name: 'CONTROLADO POR', displayName: 'INSPECTOR A CARGO', type: 'Ref', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
+      { name: 'INSPECTOR ACOMPAÑANTE', displayName: 'INSPECTOR ACOMPAÑANTE DEL PROCEDIMIENTO', type: 'RefList', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
       { name: 'FECHA HORA', type: 'DateTime', initial: 'NOW' },
       { name: 'ESTADO DE PAGO', type: 'Enum', values: ['NO PAGA', 'PAGA DESPUES', 'SOLO VIERNES', 'SOLO SABADO', 'SOLO DOMINGO', 'VIERNES Y SABADO', 'SABADO Y DOMINGO', 'TODOS LOS DIAS', 'VIERNES Y DOMINGO'] },
       { name: 'FOTO CARNET', type: 'Image' },
@@ -370,10 +410,15 @@ const TABLE_SCHEMAS = {
     keyCol: 'ID',
     labelCol: 'CONTROLADO POR',
     hasPdfBot: false,
-    tableColumns: ['FECHA HORA', 'CONTROLADO POR', 'ESTADO DE PAGO', 'OBSERVACIONES'],
+    formColumns: [
+      'CONTROLADO POR', 'INSPECTOR ACOMPAÑANTE', 'FECHA HORA', 'ESTADO DE PAGO',
+      'FOTO CARNET', 'FOTO VENTA', 'FOTO PATENTE', 'UBICACION', 'FIRMA', 'OBSERVACIONES'
+    ],
+    tableColumns: ['FECHA HORA', 'CONTROLADO POR', 'INSPECTOR ACOMPAÑANTE', 'ESTADO DE PAGO', 'OBSERVACIONES'],
     columns: [
       { name: 'ID', type: 'Text', isKey: true, initial: 'UNIQUEID', hiddenInForm: true },
-      { name: 'CONTROLADO POR', type: 'Text' },
+      { name: 'CONTROLADO POR', displayName: 'INSPECTOR A CARGO', type: 'Ref', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
+      { name: 'INSPECTOR ACOMPAÑANTE', displayName: 'INSPECTOR ACOMPAÑANTE DEL PROCEDIMIENTO', type: 'RefList', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
       { name: 'FECHA HORA', type: 'DateTime', initial: 'NOW' },
       { name: 'ESTADO DE PAGO', type: 'Enum', values: ['NO PAGA', 'PAGA DESPUES', 'SOLO VIERNES', 'SOLO SABADO', 'SOLO DOMINGO', 'VIERNES Y SABADO', 'SABADO Y DOMINGO', 'TODOS LOS DIAS', 'VIERNES Y DOMINGO'] },
       { name: 'FOTO CARNET', type: 'Image' },
@@ -393,14 +438,20 @@ const TABLE_SCHEMAS = {
     keyCol: '_RowNumber',
     labelCol: 'LOCAL COMERCIAL',
     hasPdfBot: false,
-    tableColumns: ['N° NOTIFICACION', 'LOCAL COMERCIAL', 'DIRECCION', 'FECHA DE NOTIFICACION', 'FECHA DE TERMINO', 'DIAS RESTANTES'],
+    formColumns: [
+      'INSPECTOR', 'INSPECTOR ACOMPAÑANTE', 'N° NOTIFICACION', 'LOCAL COMERCIAL',
+      'DIRECCION', 'FECHA DE NOTIFICACION', 'FECHA DE TERMINO'
+    ],
+    tableColumns: ['N° NOTIFICACION', 'INSPECTOR', 'INSPECTOR ACOMPAÑANTE', 'LOCAL COMERCIAL', 'DIRECCION', 'FECHA DE NOTIFICACION', 'FECHA DE TERMINO', 'DIAS RESTANTES'],
     columns: [
       { name: 'N° NOTIFICACION', type: 'Number' },
       { name: 'DIRECCION', type: 'Text' },
       { name: 'LOCAL COMERCIAL', type: 'LongText' },
       { name: 'FECHA DE NOTIFICACION', type: 'DateTime', initial: 'NOW' },
       { name: 'FECHA DE TERMINO', type: 'Date', initial: 'TODAY' },
-      { name: 'DIAS RESTANTES', type: 'Text', readOnly: true, formula: 'DAYS_REMAINING' }
+      { name: 'DIAS RESTANTES', type: 'Text', readOnly: true, formula: 'DAYS_REMAINING' },
+      { name: 'INSPECTOR', displayName: 'INSPECTOR A CARGO', type: 'Ref', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
+      { name: 'INSPECTOR ACOMPAÑANTE', displayName: 'INSPECTOR ACOMPAÑANTE DEL PROCEDIMIENTO', type: 'RefList', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' }
     ]
   },
 
