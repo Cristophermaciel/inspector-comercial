@@ -733,6 +733,41 @@
     border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin-top: 10px;
   }
   #qrReaderBox { width: 100%; max-width: 420px; margin: 0 auto 12px; border-radius: 12px; overflow: hidden; border: 2px solid var(--primary); }
+
+  /* MAPA CON GEOCERCAS Y CUADRANTES */
+  .map-toolbar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    padding: 10px 14px; margin-bottom: 10px; box-shadow: var(--shadow);
+  }
+  .quadrant-strip {
+    display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 12px;
+  }
+  .quadrant-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 700;
+    background: var(--surface); border: 1.5px solid var(--border); color: var(--text);
+    cursor: pointer; transition: all 0.15s ease; box-shadow: 0 1px 2px rgba(15,23,42,0.04);
+  }
+  .quadrant-chip:hover { border-color: var(--primary-light); transform: translateY(-1px); }
+  .quadrant-chip.active { background: var(--primary); color: #fff; border-color: var(--primary); box-shadow: 0 4px 12px rgba(12,52,125,0.25); }
+  .quadrant-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; border: 1.5px solid rgba(255,255,255,0.85); }
+  .quadrant-count { background: rgba(15,23,42,0.08); padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 800; }
+  .quadrant-chip.active .quadrant-count { background: rgba(255,255,255,0.22); color: #fff; }
+  .quadrant-map-label {
+    background: rgba(15, 23, 42, 0.85); color: #fff; border: 1px solid rgba(255,255,255,0.45);
+    border-radius: 8px; padding: 3px 8px; font-size: 11px; font-weight: 800;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.25); white-space: nowrap;
+  }
+  .leaflet-tooltip.leaflet-tooltip-plain {
+    background: transparent !important; border: none !important; box-shadow: none !important; padding: 0 !important;
+  }
+  .leaflet-tooltip.leaflet-tooltip-plain::before { display: none !important; }
+  .quadrant-info-bar {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px;
+    background: linear-gradient(135deg, #f8fbff 0%, #eef4ff 100%); border: 1px solid #d4e3fc;
+    border-radius: 12px; padding: 10px 14px; margin-bottom: 10px; font-size: 12.5px;
+  }
 </style>
 
 </head>
@@ -2288,9 +2323,13 @@ const App = {
     this.toast('Obteniendo ubicación GPS...');
     navigator.geolocation.getCurrentPosition(
       pos => {
-        const coords = pos.coords.latitude.toFixed(6) + ', ' + pos.coords.longitude.toFixed(6);
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const coords = lat.toFixed(6) + ', ' + lng.toFixed(6);
         document.getElementById(inputId).value = coords;
-        this.toast('Ubicación capturada: ' + coords);
+        const q = this.detectQuadrant(lat, lng);
+        const qMsg = q ? (' · 📍 Cuadrante ' + q.id + ' (' + q.unidad + ')') : ' · Fuera de geocerca Peñaflor';
+        this.toast('Ubicación capturada: ' + coords + qMsg);
       },
       err => this.toast('Error GPS: ' + err.message),
       { enableHighAccuracy: true, timeout: 10000 }
@@ -2611,8 +2650,114 @@ const App = {
   },
 
   // ==========================================================================
-  // MAPA INTERACTIVO
+  // MAPA INTERACTIVO CON CUADRANTES Y GEOCERCAS (CARABINEROS + SRA/SRB/SRA1)
   // ==========================================================================
+  _getDefaultQuadrants() {
+    return [
+      {
+        id: '252-A', nombre: 'Cuadrante 252-A', tipo: 'URBANO',
+        unidad: '56ª Comisaría Peñaflor', telefono: '+569 7959 8937',
+        sectores: 'Vicuña Mackenna, Av. del Parque, Pelvín urbano y Santa Corina',
+        color: '#2563eb',
+        polygon: [[-33.595, -70.916], [-33.595, -70.896], [-33.608, -70.896], [-33.608, -70.916]]
+      },
+      {
+        id: '252-B', nombre: 'Cuadrante 252-B', tipo: 'URBANO',
+        unidad: '56ª Comisaría Peñaflor', telefono: '+569 6841 7064',
+        sectores: 'Vicuña Mackenna, Av. del Parque, Los Guindos y Pajaritos',
+        color: '#0891b2',
+        polygon: [[-33.608, -70.916], [-33.608, -70.896], [-33.624, -70.896], [-33.624, -70.916]]
+      },
+      {
+        id: '252-C', nombre: 'Cuadrante 252-C', tipo: 'URBANO',
+        unidad: '56ª Comisaría Peñaflor', telefono: '+569 8846 1164',
+        sectores: 'Vicuña Mackenna, Av. Peñaflor, Av. Berlín y Benjamín Subercaseaux',
+        color: '#7c3aed',
+        polygon: [[-33.595, -70.896], [-33.595, -70.874], [-33.624, -70.874], [-33.624, -70.896]]
+      },
+      {
+        id: '253-A', nombre: 'Cuadrante 253-A', tipo: 'URBANO',
+        unidad: 'Subcomisaría Malloco', telefono: '+569 7959 8938',
+        sectores: 'Malloco Norte y Av. Balmaceda',
+        color: '#059669',
+        polygon: [[-33.595, -70.874], [-33.595, -70.844], [-33.611, -70.844], [-33.611, -70.874]]
+      },
+      {
+        id: '253-B', nombre: 'Cuadrante 253-B', tipo: 'URBANO',
+        unidad: 'Subcomisaría Malloco', telefono: '+569 9964 7797',
+        sectores: 'Malloco Sur y Las Praderas',
+        color: '#d97706',
+        polygon: [[-33.611, -70.874], [-33.611, -70.844], [-33.626, -70.844], [-33.626, -70.874]]
+      },
+      {
+        id: 'SRA', nombre: 'Exterior SRA', tipo: 'RURAL / EXTERIOR',
+        unidad: 'Seguridad Pública 1410', telefono: '1410',
+        sectores: 'Sector Rural A — Exterior Poniente, Pelvín Rural, El Guanaco y Camino a Melipilla',
+        color: '#dc2626',
+        polygon: [[-33.575, -70.958], [-33.575, -70.916], [-33.645, -70.916], [-33.645, -70.958]]
+      },
+      {
+        id: 'SRA1', nombre: 'Exterior SRA1', tipo: 'RURAL / EXTERIOR',
+        unidad: 'Seguridad Pública 1410', telefono: '1410',
+        sectores: 'Sector Rural A1 — Exterior Norte, Santa Corina Rural, Camino El Rosario y Límite Padre Hurtado',
+        color: '#e11d48',
+        polygon: [[-33.575, -70.916], [-33.575, -70.830], [-33.595, -70.830], [-33.595, -70.916]]
+      },
+      {
+        id: 'SRB', nombre: 'Exterior SRB', tipo: 'RURAL / EXTERIOR',
+        unidad: 'Seguridad Pública 1410', telefono: '1410',
+        sectores: 'Sector Rural B — Exterior Sur y Oriente, Berlín Sur, Malloco Rural y Límite Talagante / Calera de Tango',
+        color: '#65a30d',
+        polygon: [
+          [-33.595, -70.844], [-33.595, -70.830], [-33.688, -70.830], [-33.688, -70.958],
+          [-33.645, -70.958], [-33.645, -70.916], [-33.624, -70.916], [-33.624, -70.874],
+          [-33.626, -70.874], [-33.626, -70.844]
+        ]
+      }
+    ];
+  },
+
+  getQuadrants() {
+    try {
+      const saved = localStorage.getItem('INSPECTOR_CUSTOM_QUADRANTS_V1');
+      if (saved) {
+        const arr = JSON.parse(saved);
+        if (Array.isArray(arr) && arr.length > 0) return arr;
+      }
+    } catch (e) {}
+    return this._getDefaultQuadrants();
+  },
+
+  _pointInPolygon(lat, lng, poly) {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const xi = poly[i][0], yi = poly[i][1];
+      const xj = poly[j][0], yj = poly[j][1];
+      const intersect = ((yi > lng) !== (yj > lng)) &&
+        (lat < (xj - xi) * (lng - yi) / ((yj - yi) || 1e-12) + xi);
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  },
+
+  detectQuadrant(lat, lng) {
+    const la = Number(lat), ln = Number(lng);
+    if (isNaN(la) || isNaN(ln)) return null;
+    const qs = this.getQuadrants();
+    for (let i = 0; i < qs.length; i++) {
+      if (qs[i].polygon && qs[i].polygon.length >= 3 && this._pointInPolygon(la, ln, qs[i].polygon)) {
+        return qs[i];
+      }
+    }
+    return null;
+  },
+
+  _polygonCentroid(poly) {
+    let latSum = 0, lngSum = 0;
+    poly.forEach(p => { latSum += p[0]; lngSum += p[1]; });
+    return [latSum / poly.length, lngSum / poly.length];
+  },
+
   renderMap(tableName) {
     const tablesWithLoc = ['COMERCIO', 'FUERA DE HORA', 'GIGANTOGRAFIA', 'PATENTES EN MORA', 'ASISTENCIA', 'REPORTE', 'SEMANA PEÑAFLORINA', 'FERIAS NAVIDEÑAS'];
     let opts = '';
@@ -2620,36 +2765,279 @@ const App = {
       opts += '<option value="' + t + '"' + (t === tableName ? ' selected' : '') + '>' + this.esc(this.boot.schemas[t].label) + '</option>';
     });
 
-    document.getElementById('appView').innerHTML =
-      '<div class="section-header"><h2>Mapa de Fiscalizaciones</h2>' +
-      '<select class="form-control" style="max-width:260px;" onchange="App.renderMap(this.value)">' + opts + '</select>' +
-      '</div><div id="mapContainer"></div>';
+    const hasCustom = Boolean(localStorage.getItem('INSPECTOR_CUSTOM_QUADRANTS_V1'));
+    this.mapState = {
+      tableName,
+      points: [],
+      selectedQuadrant: 'ALL',
+      showGeofences: true,
+      geofenceLayer: null,
+      markersLayer: null,
+      polyMap: {}
+    };
 
-    this.showLoader('Cargando ubicaciones GPS...');
+    document.getElementById('appView').innerHTML =
+      '<div class="section-header" style="margin-bottom:10px;">' +
+      '<h2>Mapa de Fiscalizaciones por Cuadrantes</h2>' +
+      '<select class="form-control" style="max-width:260px;" onchange="App.renderMap(this.value)">' + opts + '</select>' +
+      '</div>' +
+      '<div class="map-toolbar">' +
+      '<label style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;cursor:pointer;">' +
+      '<input type="checkbox" id="chkShowGeofences" checked onchange="App.toggleGeofences(this.checked)"> Mostrar Geocercas (Cuadrantes)' +
+      '</label>' +
+      '<button class="btn btn-outline btn-sm" onclick="document.getElementById(\'kmlImportInput\').click()">' +
+      '<span class="material-icons" style="font-size:16px;">upload_file</span> Importar KML / GeoJSON</button>' +
+      '<input type="file" id="kmlImportInput" accept=".kml,.geojson,.json" style="display:none;" onchange="App.importQuadrantsFile(this)">' +
+      (hasCustom ? '<button class="btn btn-outline btn-sm" onclick="App.resetDefaultQuadrants()">Restaurar Oficiales</button>' : '') +
+      '<button class="btn btn-success btn-sm" style="margin-left:auto;" onclick="App.exportMapQuadrantXLSX()">' +
+      '<span class="material-icons" style="font-size:16px;">table_view</span> Exportar Excel por Cuadrante</button>' +
+      '</div>' +
+      '<div id="quadrantStrip" class="quadrant-strip"></div>' +
+      '<div id="quadrantInfoBar" class="quadrant-info-bar" style="display:none;"></div>' +
+      '<div id="mapContainer"></div>';
+
+    this.showLoader('Cargando ubicaciones GPS y geocercas...');
     google.script.run
       .withSuccessHandler(points => {
         this.hideLoader();
+        const enriched = (points || []).map(p => {
+          const q = this.detectQuadrant(p.lat, p.lng);
+          return Object.assign({}, p, {
+            quadrantId: q ? q.id : 'SIN_CUADRANTE',
+            quadrantName: q ? q.nombre : 'Fuera de Cuadrante',
+            quadrantUnit: q ? q.unidad : '-',
+            quadrantColor: q ? q.color : '#64748b'
+          });
+        });
+        this.mapState.points = enriched;
+
         if (this.leafletMap) { this.leafletMap.remove(); this.leafletMap = null; }
-        this.leafletMap = L.map('mapContainer').setView([-33.6063, -70.8764], 13);
+        this.leafletMap = L.map('mapContainer').setView([-33.6085, -70.8880], 13);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
           attribution: '&copy; OpenStreetMap'
         }).addTo(this.leafletMap);
 
-        const bounds = [];
-        (points || []).forEach(p => {
-          bounds.push([p.lat, p.lng]);
-          L.marker([p.lat, p.lng]).addTo(this.leafletMap)
-            .bindPopup('<strong>' + this.esc(p.title) + '</strong><br>' +
-              this.esc(p.subtitle) + '<br><small>Inspector: ' + this.esc(p.inspector) + ' | ' + this.esc(p.fecha) + '</small>');
-        });
-        if (bounds.length > 0) this.leafletMap.fitBounds(bounds, { padding: [30, 30] });
-        else this.toast('No se encontraron registros con coordenadas GPS en ' + tableName);
+        this.mapState.geofenceLayer = L.layerGroup().addTo(this.leafletMap);
+        this.mapState.markersLayer = L.layerGroup().addTo(this.leafletMap);
+
+        this._renderQuadrantControlsAndLayers();
       })
       .withFailureHandler(err => {
         this.hideLoader();
         this.toast('Error mapa: ' + err.message);
       })
       .apiGetMapPoints(tableName);
+  },
+
+  _renderQuadrantControlsAndLayers() {
+    const st = this.mapState;
+    if (!st || !this.leafletMap) return;
+    const qs = this.getQuadrants();
+    const counts = { ALL: st.points.length, SIN_CUADRANTE: 0 };
+    qs.forEach(q => { counts[q.id] = 0; });
+    st.points.forEach(p => {
+      if (counts[p.quadrantId] !== undefined) counts[p.quadrantId]++;
+      else counts.SIN_CUADRANTE++;
+    });
+
+    // 1. Render chips resumen arriba del mapa
+    let chipsHtml = '<button class="quadrant-chip ' + (st.selectedQuadrant === 'ALL' ? 'active' : '') + '" onclick="App.selectMapQuadrant(\'ALL\')">' +
+      '<span class="material-icons" style="font-size:15px;">public</span> Todos <span class="quadrant-count">' + counts.ALL + '</span></button>';
+    qs.forEach(q => {
+      const isAct = st.selectedQuadrant === q.id;
+      chipsHtml += '<button class="quadrant-chip ' + (isAct ? 'active' : '') + '" onclick="App.selectMapQuadrant(\'' + this.escJs(q.id) + '\')">' +
+        '<span class="quadrant-dot" style="background:' + q.color + ';"></span>' +
+        this.esc(q.id) + ' <span class="quadrant-count">' + (counts[q.id] || 0) + '</span></button>';
+    });
+    if (counts.SIN_CUADRANTE > 0) {
+      chipsHtml += '<button class="quadrant-chip ' + (st.selectedQuadrant === 'SIN_CUADRANTE' ? 'active' : '') + '" onclick="App.selectMapQuadrant(\'SIN_CUADRANTE\')">' +
+        '<span class="quadrant-dot" style="background:#64748b;"></span> Fuera de límite <span class="quadrant-count">' + counts.SIN_CUADRANTE + '</span></button>';
+    }
+    const stripEl = document.getElementById('quadrantStrip');
+    if (stripEl) stripEl.innerHTML = chipsHtml;
+
+    // 2. Barra de información del cuadrante seleccionado
+    const infoEl = document.getElementById('quadrantInfoBar');
+    if (infoEl) {
+      const selQ = qs.find(q => q.id === st.selectedQuadrant);
+      if (selQ) {
+        infoEl.style.display = 'flex';
+        infoEl.innerHTML =
+          '<div><strong style="color:' + selQ.color + ';">' + this.esc(selQ.nombre) + ' (' + this.esc(selQ.tipo) + ')</strong> — ' +
+          this.esc(selQ.unidad) + ' · Tel: <strong>' + this.esc(selQ.telefono) + '</strong><br>' +
+          '<span style="color:var(--muted);">Sectores: ' + this.esc(selQ.sectores) + '</span></div>' +
+          '<span class="badge badge-blue">' + (counts[selQ.id] || 0) + ' fiscalización(es)</span>';
+      } else {
+        infoEl.style.display = 'none';
+      }
+    }
+
+    // 3. Dibujar polígonos de geocerca
+    st.geofenceLayer.clearLayers();
+    st.polyMap = {};
+    if (st.showGeofences) {
+      qs.forEach(q => {
+        if (!q.polygon || q.polygon.length < 3) return;
+        const isSel = st.selectedQuadrant === q.id;
+        const isDim = st.selectedQuadrant !== 'ALL' && !isSel;
+        const poly = L.polygon(q.polygon, {
+          color: q.color,
+          weight: isSel ? 3.5 : 2,
+          opacity: isDim ? 0.35 : 0.9,
+          fillColor: q.color,
+          fillOpacity: isSel ? 0.24 : (isDim ? 0.05 : 0.13),
+          dashArray: q.tipo === 'RURAL / EXTERIOR' ? '6, 5' : null
+        });
+        poly.on('click', () => this.selectMapQuadrant(q.id));
+        poly.bindTooltip(
+          '<div class="quadrant-map-label" style="border-left:4px solid ' + q.color + ';">' + this.esc(q.id) + ' (' + (counts[q.id] || 0) + ')</div>',
+          { permanent: true, direction: 'center', className: 'leaflet-tooltip-plain', opacity: isDim ? 0.45 : 0.95 }
+        );
+        poly.addTo(st.geofenceLayer);
+        st.polyMap[q.id] = poly;
+      });
+    }
+
+    // 4. Dibujar marcadores filtrados
+    st.markersLayer.clearLayers();
+    const filtered = st.selectedQuadrant === 'ALL'
+      ? st.points
+      : st.points.filter(p => p.quadrantId === st.selectedQuadrant);
+
+    const bounds = [];
+    filtered.forEach(p => {
+      bounds.push([p.lat, p.lng]);
+      L.circleMarker([p.lat, p.lng], {
+        radius: 7,
+        color: '#ffffff',
+        weight: 2,
+        fillColor: p.quadrantColor || '#2563eb',
+        fillOpacity: 0.92
+      }).addTo(st.markersLayer)
+        .bindPopup(
+          '<div style="font-size:12.5px;line-height:1.45;">' +
+          '<span style="display:inline-block;background:' + p.quadrantColor + ';color:#fff;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;margin-bottom:4px;">' + this.esc(p.quadrantName) + '</span><br>' +
+          '<strong>' + this.esc(p.title) + '</strong><br>' +
+          this.esc(p.subtitle) + '<br>' +
+          '<small>Inspector: ' + this.esc(p.inspector) + ' | ' + this.esc(p.fecha) + '</small></div>'
+        );
+    });
+
+    if (st.selectedQuadrant !== 'ALL' && st.polyMap[st.selectedQuadrant]) {
+      this.leafletMap.fitBounds(st.polyMap[st.selectedQuadrant].getBounds(), { padding: [26, 26] });
+    } else if (bounds.length > 0) {
+      this.leafletMap.fitBounds(bounds, { padding: [28, 28], maxZoom: 15 });
+    }
+  },
+
+  selectMapQuadrant(quadrantId) {
+    if (!this.mapState) return;
+    this.mapState.selectedQuadrant = (this.mapState.selectedQuadrant === quadrantId && quadrantId !== 'ALL') ? 'ALL' : quadrantId;
+    this._renderQuadrantControlsAndLayers();
+  },
+
+  toggleGeofences(show) {
+    if (!this.mapState) return;
+    this.mapState.showGeofences = show;
+    this._renderQuadrantControlsAndLayers();
+  },
+
+  importQuadrantsFile(input) {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const text = String(e.target.result || '');
+        const palette = ['#2563eb', '#0891b2', '#7c3aed', '#059669', '#d97706', '#dc2626', '#e11d48', '#65a30d', '#0284c7', '#9333ea'];
+        const imported = [];
+
+        if (file.name.toLowerCase().endsWith('.kml')) {
+          const doc = new DOMParser().parseFromString(text, 'text/xml');
+          const placemarks = doc.querySelectorAll('Placemark');
+          placemarks.forEach((pm, idx) => {
+            const name = (pm.querySelector('name') ? pm.querySelector('name').textContent : ('Cuadrante ' + (idx + 1))).trim();
+            const desc = (pm.querySelector('description') ? pm.querySelector('description').textContent : '').trim();
+            const coordEl = pm.querySelector('Polygon coordinates, coordinates');
+            if (!coordEl) return;
+            const pts = coordEl.textContent.trim().split(/\s+/).map(pair => {
+              const parts = pair.split(',');
+              return [Number(parts[1]), Number(parts[0])];
+            }).filter(p => !isNaN(p[0]) && !isNaN(p[1]));
+            if (pts.length >= 3) {
+              imported.push({
+                id: name.toUpperCase().slice(0, 16),
+                nombre: name,
+                tipo: /SR/i.test(name) ? 'RURAL / EXTERIOR' : 'URBANO',
+                unidad: /SR/i.test(name) ? 'Seguridad Pública 1410' : 'Carabineros Peñaflor',
+                telefono: '1410',
+                sectores: desc || 'Geocerca importada desde KML',
+                color: palette[idx % palette.length],
+                polygon: pts
+              });
+            }
+          });
+        } else {
+          const geo = JSON.parse(text);
+          const feats = geo.features || [];
+          feats.forEach((f, idx) => {
+            if (!f.geometry) return;
+            const ring = f.geometry.type === 'Polygon' ? f.geometry.coordinates[0]
+              : (f.geometry.type === 'MultiPolygon' ? f.geometry.coordinates[0][0] : null);
+            if (!ring || ring.length < 3) return;
+            const props = f.properties || {};
+            const name = String(props.name || props.NOMBRE || props.cuadrante || props.CUADRANTE || ('Cuadrante ' + (idx + 1))).trim();
+            imported.push({
+              id: name.toUpperCase().slice(0, 16),
+              nombre: name,
+              tipo: /SR/i.test(name) ? 'RURAL / EXTERIOR' : 'URBANO',
+              unidad: props.unidad || (/SR/i.test(name) ? 'Seguridad Pública 1410' : 'Carabineros Peñaflor'),
+              telefono: props.telefono || '1410',
+              sectores: props.sectores || props.description || 'Geocerca importada desde GeoJSON',
+              color: props.color || palette[idx % palette.length],
+              polygon: ring.map(c => [Number(c[1]), Number(c[0])])
+            });
+          });
+        }
+
+        if (imported.length === 0) {
+          this.toast('No se encontraron polígonos válidos en el archivo.');
+          return;
+        }
+        localStorage.setItem('INSPECTOR_CUSTOM_QUADRANTS_V1', JSON.stringify(imported));
+        this.toast('Se importaron ' + imported.length + ' geocercas correctamente.');
+        this.renderMap(this.mapState.tableName);
+      } catch (err) {
+        this.toast('Error al leer archivo KML/GeoJSON: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+  },
+
+  resetDefaultQuadrants() {
+    localStorage.removeItem('INSPECTOR_CUSTOM_QUADRANTS_V1');
+    this.toast('Cuadrantes oficiales de Peñaflor restaurados.');
+    this.renderMap(this.mapState ? this.mapState.tableName : 'COMERCIO');
+  },
+
+  exportMapQuadrantXLSX() {
+    const st = this.mapState;
+    if (!st || !st.points) return;
+    const rows = st.selectedQuadrant === 'ALL'
+      ? st.points
+      : st.points.filter(p => p.quadrantId === st.selectedQuadrant);
+    const headers = ['MODULO', 'CUADRANTE', 'UNIDAD', 'TITULO', 'DETALLE', 'INSPECTOR', 'FECHA', 'LATITUD', 'LONGITUD'];
+    const aoa = [headers];
+    rows.forEach(p => {
+      aoa.push([st.tableName, p.quadrantName, p.quadrantUnit, p.title, p.subtitle, p.inspector, p.fecha, p.lat, p.lng]);
+    });
+    if (typeof XLSX !== 'undefined') {
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      XLSX.utils.book_append_sheet(wb, ws, 'CUADRANTES');
+      XLSX.writeFile(wb, 'Mapa_' + st.tableName.replace(/\s+/g, '_') + '_' + st.selectedQuadrant + '_' + new Date().toISOString().slice(0, 10) + '.xlsx');
+      this.toast('Excel por cuadrante descargado (' + rows.length + ' registros).');
+    }
   },
 
   // ==========================================================================

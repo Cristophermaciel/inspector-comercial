@@ -1,4 +1,4 @@
-const CACHE_NAME = 'inspectores-penaflor-v10';
+const CACHE_NAME = 'inspectores-penaflor-v11';
 const CORE_ASSETS = [
   './',
   './index.html',
