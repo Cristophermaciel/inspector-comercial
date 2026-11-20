@@ -25,7 +25,76 @@ if (typeof google === 'undefined' || !google.script) {
     window.__GAS_LIVE_CONNECTED__ = Boolean(LIVE_API_URL);
     window.__DEFAULT_GAS_API_URL__ = DEFAULT_GAS_API_URL;
 
-    function callLiveGas(action, payload) {
+    // ========================================================================
+    // MOTOR DE CACHÉ ULTRA-RÁPIDO (STALE-WHILE-REVALIDATE + PREFETCH + DEDUP)
+    // ========================================================================
+    var SWR_PREFIX = 'INSP_SWR_V1:';
+    var memCache = {};
+    var inFlight = {};
+    var prefetchedOnce = false;
+
+    function getCacheKey(action, payload) {
+      if (action === 'rows' || action === 'map') return action + ':' + ((payload && payload.table) || '');
+      if (action === 'feriaAttendance') return action + ':' + ((payload && payload.feria) || '') + ':' + ((payload && payload.fecha) || '');
+      return action;
+    }
+
+    function readCache(key) {
+      if (memCache[key]) return memCache[key];
+      try {
+        var raw = localStorage.getItem(SWR_PREFIX + key);
+        if (raw) {
+          var parsed = JSON.parse(raw);
+          if (parsed && parsed.data) {
+            memCache[key] = parsed;
+            return parsed;
+          }
+        }
+      } catch (e) {}
+      return null;
+    }
+
+    function writeCache(key, data) {
+      if (!data || data.ok === false || data.error) return;
+      var entry = { ts: Date.now(), data: data };
+      memCache[key] = entry;
+      try {
+        var str = JSON.stringify(entry);
+        if (str.length < 450000) {
+          localStorage.setItem(SWR_PREFIX + key, str);
+        }
+      } catch (e) {}
+    }
+
+    function invalidateCacheForWrite(action, payload) {
+      var keysToClear = ['dashboard'];
+      if (payload && payload.table) {
+        keysToClear.push('rows:' + payload.table);
+        keysToClear.push('map:' + payload.table);
+      }
+      if (action === 'saveFeriaAttendance' && payload && payload.payload) {
+        keysToClear.push('feriaAttendance:' + (payload.payload.feria || '') + ':' + (payload.payload.fecha || ''));
+      }
+      if (action === 'runExcelBackup' || action === 'toggleDailyBackup') {
+        keysToClear.push('listExcelBackups');
+        keysToClear.push('bootstrap');
+      }
+      keysToClear.forEach(function(k) {
+        delete memCache[k];
+        try { localStorage.removeItem(SWR_PREFIX + k); } catch (e) {}
+      });
+    }
+
+    window.__clearInspectorLiveCache = function() {
+      memCache = {};
+      try {
+        Object.keys(localStorage).forEach(function(k) {
+          if (k.indexOf(SWR_PREFIX) === 0) localStorage.removeItem(k);
+        });
+      } catch (e) {}
+    };
+
+    function fetchLiveGasRaw(action, payload) {
       var isRead = (action === 'bootstrap' || action === 'rows' || action === 'dashboard' || action === 'map' || action === 'listExcelBackups' || action === 'feriaAttendance');
       if (isRead) {
         var qs = '?action=' + encodeURIComponent(action);
@@ -39,6 +108,96 @@ if (typeof google === 'undefined' || !google.script) {
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify(Object.assign({ action: action }, payload || {}))
       }).then(function(r) { return r.json(); });
+    }
+
+    function scheduleBackgroundPrefetch() {
+      if (prefetchedOnce || !LIVE_API_URL) return;
+      prefetchedOnce = true;
+      setTimeout(function() {
+        var targets = [
+          { action: 'dashboard', payload: null },
+          { action: 'rows', payload: { table: 'ASISTENCIA' } }
+        ];
+        targets.forEach(function(t) {
+          var ck = getCacheKey(t.action, t.payload);
+          var existing = readCache(ck);
+          if (!existing || (Date.now() - existing.ts > 120000)) {
+            if (!inFlight[ck]) {
+              inFlight[ck] = fetchLiveGasRaw(t.action, t.payload)
+                .then(function(res) { writeCache(ck, res); return res; })
+                .catch(function() { return null; })
+                .finally(function() { delete inFlight[ck]; });
+            }
+          }
+        });
+      }, 1200);
+    }
+
+    function buildInstantBootstrapShell() {
+      return {
+        authorized: true,
+        isLiveBackend: true,
+        user: { email: 'cristopher.maciel@penaflor.cl', isAuthorized: true },
+        config: {
+          appName: APP_CONFIG.APP_NAME,
+          subtitle: APP_CONFIG.SUBTITLE,
+          creator: APP_CONFIG.CREATOR,
+          contact: APP_CONFIG.CONTACT,
+          primaryColor: APP_CONFIG.PRIMARY_COLOR
+        },
+        schemas: TABLE_SCHEMAS,
+        viewMap: APPSHEET_VIEW_MAP,
+        funcionarios: [],
+        navTables: {},
+        driveFolders: {},
+        dailyBackupEnabled: false
+      };
+    }
+
+    function callLiveGas(action, payload) {
+      var isRead = (action === 'bootstrap' || action === 'rows' || action === 'dashboard' || action === 'map' || action === 'listExcelBackups' || action === 'feriaAttendance');
+      if (!isRead) {
+        invalidateCacheForWrite(action, payload);
+        return fetchLiveGasRaw(action, payload);
+      }
+
+      var ck = getCacheKey(action, payload);
+      var cached = readCache(ck);
+      var staleMs = (action === 'bootstrap') ? 300000 : 60000;
+
+      function refreshInBackground() {
+        if (inFlight[ck]) return inFlight[ck];
+        inFlight[ck] = fetchLiveGasRaw(action, payload)
+          .then(function(res) {
+            if (res && !res.error && res.ok !== false) {
+              writeCache(ck, res);
+              if (action === 'bootstrap' && window.App && App.applyLiveBootstrapUpdate) {
+                App.applyLiveBootstrapUpdate(res);
+              }
+            }
+            return res;
+          })
+          .finally(function() { delete inFlight[ck]; });
+        return inFlight[ck];
+      }
+
+      // 1) Si hay caché: respuesta INSTANTÁNEA (0 ms) + revalidación silenciosa si está vencida
+      if (cached && cached.data) {
+        if (Date.now() - cached.ts > staleMs) {
+          refreshInBackground().catch(function() {});
+        }
+        if (action === 'bootstrap') scheduleBackgroundPrefetch();
+        return Promise.resolve(cached.data);
+      }
+
+      // 2) Arranque en frío de bootstrap: pinta la UI en < 10 ms y sincroniza en vivo detrás
+      if (action === 'bootstrap') {
+        refreshInBackground().then(function() { scheduleBackgroundPrefetch(); }).catch(function() {});
+        return Promise.resolve(buildInstantBootstrapShell());
+      }
+
+      // 3) Lectura en vivo con deduplicación
+      return refreshInBackground();
     }
 
     var DELTA_KEY = 'inspector_comercial_deltas_v3';
