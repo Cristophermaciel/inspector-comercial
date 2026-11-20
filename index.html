@@ -921,6 +921,19 @@ var APP_CONFIG = {
   ],
   FERIA_MAX_PUESTOS: 100,
 
+  // Listado oficial de funcionarios / inspectores (sin entradas de EQUIPO)
+  DEFAULT_FUNCIONARIOS: [
+    { nombre: 'Luis Zamorano Vásquez', rol: 'Inspector Comercial' },
+    { nombre: 'JHON NAVARRETE', rol: 'INSPECTOR' },
+    { nombre: 'SERGIO OYARCE', rol: 'INSPECTOR' },
+    { nombre: 'ENRIQUE RODRIGUEZ', rol: 'INSPECTOR' },
+    { nombre: 'NICOLAS ZAMORANO', rol: 'INSPECTOR' },
+    { nombre: 'LEONARDO VALENZUELA', rol: 'INSPECTOR' },
+    { nombre: 'LEONARDO HERRERA', rol: 'INSPECTOR' },
+    { nombre: 'PATRICIO CANCINO', rol: 'INSPECTOR' },
+    { nombre: 'TAMARA MARTINEZ', rol: 'INSPECTOR' }
+  ],
+
   // Hojas de cálculo originales de AppSheet
   SPREADSHEETS: {
     MAIN: '1jsgsXgkJ2UfW9cZhbw02HUK795lyYjB_uxPwLizyp7I',
@@ -1006,7 +1019,7 @@ var TABLE_SCHEMAS = {
     labelCol: 'NOMBRE LOCAL',
     hasPdfBot: true,
     formColumns: [
-      'INSPECTOR', 'FECHA HORA', 'TIPO DE INTERVENCION', 'TIPO FISCALIZACION',
+      'INSPECTOR', 'INSPECTOR ACOMPAÑANTE', 'FECHA HORA', 'TIPO DE INTERVENCION', 'TIPO FISCALIZACION',
       'DIRECCION', 'TELEFONO', 'EMAIL', 'NOMBRE LOCAL',
       'NOMBRE DUEÑO O RAZON SOCIAL', 'RUT', 'PRODUCTOS QUE VENDE', 'GIRO',
       'DOCUMENTO FISCALIZADO', 'CUENTA CON PATENTE', 'EXHIBE PATENTE',
@@ -1014,12 +1027,13 @@ var TABLE_SCHEMAS = {
       'INTERVENCION', 'OTROS ANTECEDENTES', 'FOTO 1', 'FOTO 2', 'FOTO 3', 'FIRMA'
     ],
     tableColumns: [
-      'FECHA HORA', 'INSPECTOR', 'NOMBRE LOCAL', 'RUT', 'DIRECCION',
+      'FECHA HORA', 'INSPECTOR', 'INSPECTOR ACOMPAÑANTE', 'NOMBRE LOCAL', 'RUT', 'DIRECCION',
       'CUENTA CON PATENTE', 'PERMISO AL DIA', 'PDF'
     ],
     columns: [
       { name: 'ID', type: 'Text', isKey: true, initial: 'UNIQUEID', hiddenInForm: true },
-      { name: 'INSPECTOR', type: 'Ref', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
+      { name: 'INSPECTOR', displayName: 'INSPECTOR A CARGO', type: 'Ref', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
+      { name: 'INSPECTOR ACOMPAÑANTE', displayName: 'INSPECTOR ACOMPAÑANTE DEL PROCEDIMIENTO', type: 'RefList', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
       { name: 'FECHA HORA', type: 'DateTime', initial: 'NOW' },
       { name: 'TIPO DE INTERVENCION', type: 'EnumList', values: ['Fiscalización de rutina', 'Denuncia ciudadana', 'Operativo conjunto', 'Inspección por reincidencia', 'Control nocturno', 'Control de patentes', 'Otro'] },
       { name: 'TIPO FISCALIZACION', type: 'EnumList', values: ['Inspección', 'Infracción cursada', 'Clausura', 'Notificación', 'Citación al Juzgado', 'Advertencia verbal', 'Decomiso', 'Otro'] },
@@ -1056,7 +1070,7 @@ var TABLE_SCHEMAS = {
     labelCol: 'NOMBRE LOCAL',
     hasPdfBot: true,
     formColumns: [
-      'INSPECTOR', 'FECHA HORA', 'TIPO DE INTERVENCION', 'TIPO FISCALIZACION',
+      'INSPECTOR', 'INSPECTOR ACOMPAÑANTE', 'FECHA HORA', 'TIPO DE INTERVENCION', 'TIPO FISCALIZACION',
       'TELEFONO', 'EMAIL', 'DIRECCION', 'NOMBRE LOCAL',
       'NOMBRE DUEÑO O RAZON SOCIAL', 'RUT', 'PRODUCTOS QUE VENDE', 'GIRO',
       'DOCUMENTO FISCALIZADO', 'CUENTA CON PATENTE', 'EXHIBE PATENTE',
@@ -1065,12 +1079,13 @@ var TABLE_SCHEMAS = {
       'FOTO 1', 'FOTO 2', 'FOTO 3', 'FIRMA'
     ],
     tableColumns: [
-      'FECHA HORA', 'INSPECTOR', 'NOMBRE LOCAL', 'RUT', 'DIRECCION',
+      'FECHA HORA', 'INSPECTOR', 'INSPECTOR ACOMPAÑANTE', 'NOMBRE LOCAL', 'RUT', 'DIRECCION',
       'CUENTA CON PATENTE', 'PERMISO AL DIA', 'PDF'
     ],
     columns: [
       { name: 'ID', type: 'Text', isKey: true, initial: 'UNIQUEID', hiddenInForm: true },
-      { name: 'INSPECTOR', type: 'Ref', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
+      { name: 'INSPECTOR', displayName: 'INSPECTOR A CARGO', type: 'Ref', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
+      { name: 'INSPECTOR ACOMPAÑANTE', displayName: 'INSPECTOR ACOMPAÑANTE DEL PROCEDIMIENTO', type: 'RefList', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
       { name: 'FECHA HORA', type: 'DateTime', initial: 'NOW' },
       { name: 'TIPO DE INTERVENCION', type: 'EnumList', values: ['Fiscalización de rutina', 'Denuncia ciudadana', 'Operativo conjunto', 'Inspección por reincidencia', 'Control nocturno', 'Control de patentes', 'Otro'] },
       { name: 'TIPO FISCALIZACION', type: 'EnumList', values: ['Inspección', 'Infracción cursada', 'Clausura', 'Notificación', 'Citación al Juzgado', 'Advertencia verbal', 'Decomiso', 'Otro'] },
@@ -1108,7 +1123,7 @@ var TABLE_SCHEMAS = {
     labelCol: 'NOMBRE LOCAL',
     hasPdfBot: true,
     formColumns: [
-      'INSPECTOR', 'FECHA HORA', 'TIPO DE INTERVENCION', 'TIPO FISCALIZACION',
+      'INSPECTOR', 'INSPECTOR ACOMPAÑANTE', 'FECHA HORA', 'TIPO DE INTERVENCION', 'TIPO FISCALIZACION',
       'EMAIL', 'TELEFONO', 'DIRECCION', 'NOMBRE LOCAL',
       'NOMBRE DUEÑO O RAZON SOCIAL', 'RUT', 'PRODUCTOS QUE VENDE', 'GIRO',
       'METRAJE DE LA PUBLICIDAD', 'PUBLICIDAD LUMINOSA', 'PAGA PUBLICIDAD',
@@ -1116,12 +1131,13 @@ var TABLE_SCHEMAS = {
       'OTROS ANTECEDENTES', 'FOTO 1', 'FOTO 2', 'FOTO 3', 'FIRMA'
     ],
     tableColumns: [
-      'FECHA HORA', 'INSPECTOR', 'NOMBRE LOCAL', 'DIRECCION',
+      'FECHA HORA', 'INSPECTOR', 'INSPECTOR ACOMPAÑANTE', 'NOMBRE LOCAL', 'DIRECCION',
       'METRAJE DE LA PUBLICIDAD', 'PAGA PUBLICIDAD', 'PDF'
     ],
     columns: [
       { name: 'ID', type: 'Text', isKey: true, initial: 'UNIQUEID', hiddenInForm: true },
-      { name: 'INSPECTOR', type: 'Ref', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
+      { name: 'INSPECTOR', displayName: 'INSPECTOR A CARGO', type: 'Ref', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
+      { name: 'INSPECTOR ACOMPAÑANTE', displayName: 'INSPECTOR ACOMPAÑANTE DEL PROCEDIMIENTO', type: 'RefList', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
       { name: 'FECHA HORA', type: 'DateTime', initial: 'NOW' },
       { name: 'TIPO DE INTERVENCION', type: 'EnumList', values: ['Fiscalización de rutina', 'Denuncia ciudadana', 'Inspección por reincidencia', 'Operativo conjunto', 'Control nocturno', 'Control de patentes', 'Otro', 'Control de Publicidad'] },
       { name: 'TIPO FISCALIZACION', type: 'EnumList', values: ['Infraestructura', 'Infracción cursada', 'Clausura', 'Notificación', 'Citación al Juzgado', 'Advertencia verbal', 'Decomiso', 'Otro'] },
@@ -1156,9 +1172,14 @@ var TABLE_SCHEMAS = {
     keyCol: 'ID',
     labelCol: 'NOMBRE LOCAL COMERCIAL',
     hasPdfBot: true,
+    formColumns: [
+      'FISCALIZADOR', 'INSPECTOR ACOMPAÑANTE', 'FECHA FISCALIZACION', 'NUMERO',
+      'NOMBRE LOCAL COMERCIAL', 'PATENTE', 'ROL', 'DIRECCION',
+      'ESTADO PATENTE', 'VALOR PATENTE', 'OBSERVACIONES', 'EMAIL', 'TELEFONO'
+    ],
     tableColumns: [
       'NUMERO', 'NOMBRE LOCAL COMERCIAL', 'PATENTE', 'ROL',
-      'ESTADO PATENTE', 'VALOR PATENTE', 'FISCALIZADOR', 'FECHA FISCALIZACION'
+      'ESTADO PATENTE', 'VALOR PATENTE', 'FISCALIZADOR', 'INSPECTOR ACOMPAÑANTE', 'FECHA FISCALIZACION'
     ],
     columns: [
       { name: 'ID', type: 'Text', isKey: true, initial: 'UNIQUEID', hiddenInForm: true },
@@ -1170,7 +1191,8 @@ var TABLE_SCHEMAS = {
       { name: 'ESTADO PATENTE', type: 'Enum', values: ['AL DIA', 'EN MORA'] },
       { name: 'VALOR PATENTE', type: 'Price' },
       { name: 'FECHA FISCALIZACION', type: 'DateTime', initial: 'NOW' },
-      { name: 'FISCALIZADOR', type: 'Ref', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
+      { name: 'FISCALIZADOR', displayName: 'INSPECTOR A CARGO', type: 'Ref', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
+      { name: 'INSPECTOR ACOMPAÑANTE', displayName: 'INSPECTOR ACOMPAÑANTE DEL PROCEDIMIENTO', type: 'RefList', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
       { name: 'OBSERVACIONES', type: 'LongText' },
       { name: 'EMAIL', type: 'Email' },
       { name: 'TELEFONO', type: 'Phone' }
@@ -1185,10 +1207,15 @@ var TABLE_SCHEMAS = {
     keyCol: 'ID',
     labelCol: 'FUNCIONARIO',
     hasPdfBot: true,
-    tableColumns: ['FECHA HORA', 'FUNCIONARIO', 'A QUIEN LE INFORMA', 'REPORTE', 'PDF'],
+    formColumns: [
+      'FUNCIONARIO', 'INSPECTOR ACOMPAÑANTE', 'FECHA HORA', 'REPORTE',
+      'A QUIEN LE INFORMA', 'UBICACION', 'FOTO 1', 'FOTO 2', 'FIRMA'
+    ],
+    tableColumns: ['FECHA HORA', 'FUNCIONARIO', 'INSPECTOR ACOMPAÑANTE', 'A QUIEN LE INFORMA', 'REPORTE', 'PDF'],
     columns: [
       { name: 'ID', type: 'Text', isKey: true, initial: 'UNIQUEID', hiddenInForm: true },
-      { name: 'FUNCIONARIO', type: 'Ref', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
+      { name: 'FUNCIONARIO', displayName: 'INSPECTOR A CARGO', type: 'Ref', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
+      { name: 'INSPECTOR ACOMPAÑANTE', displayName: 'INSPECTOR ACOMPAÑANTE DEL PROCEDIMIENTO', type: 'RefList', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
       { name: 'FECHA HORA', type: 'DateTime', initial: 'NOW' },
       { name: 'REPORTE', type: 'LongText' },
       { name: 'A QUIEN LE INFORMA', type: 'EnumList', values: ['DAVID HERNANDEZ', 'ALVARO NAVARRO', 'JUAN PLAZA', 'CRISTOPHER MACIEL', 'CENCOO / BRAVO', 'JEFE DE TURNO'] },
@@ -1209,7 +1236,13 @@ var TABLE_SCHEMAS = {
     labelCol: 'NOMBRE DUEÑO',
     hasPdfBot: false,
     defaultSort: { column: 'N° Puesto', asc: true },
-    tableColumns: ['N° Puesto', 'NOMBRE DUEÑO', 'DIA', 'FERIA', 'RUT DUEÑO', 'PATENTE', 'GIRO'],
+    formColumns: [
+      'INSPECTOR', 'INSPECTOR ACOMPAÑANTE', 'FECHA', 'DIA', 'FERIA', 'N° Puesto',
+      'NOMBRE DUEÑO', 'RUT DUEÑO', 'PATENTE', 'Foto patente', 'FOTO DUEÑO', 'ROL', 'GIRO',
+      'FOTO CARNET AYUDANTE', 'FOTO CARNET AYUDANTE_15', 'FOTO CARNET AYUDANTE_16',
+      'UBICACION', 'OBSERVACIONES'
+    ],
+    tableColumns: ['N° Puesto', 'NOMBRE DUEÑO', 'DIA', 'FERIA', 'INSPECTOR', 'INSPECTOR ACOMPAÑANTE', 'RUT DUEÑO', 'PATENTE', 'GIRO'],
     columns: [
       { name: 'ID', type: 'Text', isKey: true, initial: 'UNIQUEID', hiddenInForm: true },
       { name: 'FECHA', type: 'DateTime', initial: 'NOW' },
@@ -1229,7 +1262,9 @@ var TABLE_SCHEMAS = {
       { name: 'FOTO CARNET AYUDANTE_16', displayName: 'Foto Ayudante 3', type: 'Image' },
       { name: 'UBICACION', type: 'Location' },
       { name: 'PDF', type: 'File', readOnly: true },
-      { name: 'VISTA', type: 'Text', hiddenInForm: true }
+      { name: 'VISTA', type: 'Text', hiddenInForm: true },
+      { name: 'INSPECTOR', displayName: 'INSPECTOR A CARGO', type: 'Ref', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
+      { name: 'INSPECTOR ACOMPAÑANTE', displayName: 'INSPECTOR ACOMPAÑANTE DEL PROCEDIMIENTO', type: 'RefList', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' }
     ]
   },
 
@@ -1241,10 +1276,15 @@ var TABLE_SCHEMAS = {
     keyCol: 'ID',
     labelCol: 'CONTROLADO POR',
     hasPdfBot: false,
-    tableColumns: ['FECHA HORA', 'CONTROLADO POR', 'ESTADO DE PAGO', 'OBSERVACIONES'],
+    formColumns: [
+      'CONTROLADO POR', 'INSPECTOR ACOMPAÑANTE', 'FECHA HORA', 'ESTADO DE PAGO',
+      'FOTO CARNET', 'FOTO VENTA', 'FOTO PATENTE', 'UBICACION', 'FIRMA', 'OBSERVACIONES'
+    ],
+    tableColumns: ['FECHA HORA', 'CONTROLADO POR', 'INSPECTOR ACOMPAÑANTE', 'ESTADO DE PAGO', 'OBSERVACIONES'],
     columns: [
       { name: 'ID', type: 'Text', isKey: true, initial: 'UNIQUEID', hiddenInForm: true },
-      { name: 'CONTROLADO POR', type: 'Text' },
+      { name: 'CONTROLADO POR', displayName: 'INSPECTOR A CARGO', type: 'Ref', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
+      { name: 'INSPECTOR ACOMPAÑANTE', displayName: 'INSPECTOR ACOMPAÑANTE DEL PROCEDIMIENTO', type: 'RefList', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
       { name: 'FECHA HORA', type: 'DateTime', initial: 'NOW' },
       { name: 'ESTADO DE PAGO', type: 'Enum', values: ['NO PAGA', 'PAGA DESPUES', 'SOLO VIERNES', 'SOLO SABADO', 'SOLO DOMINGO', 'VIERNES Y SABADO', 'SABADO Y DOMINGO', 'TODOS LOS DIAS', 'VIERNES Y DOMINGO'] },
       { name: 'FOTO CARNET', type: 'Image' },
@@ -1264,10 +1304,15 @@ var TABLE_SCHEMAS = {
     keyCol: 'ID',
     labelCol: 'CONTROLADO POR',
     hasPdfBot: false,
-    tableColumns: ['FECHA HORA', 'CONTROLADO POR', 'ESTADO DE PAGO', 'OBSERVACIONES'],
+    formColumns: [
+      'CONTROLADO POR', 'INSPECTOR ACOMPAÑANTE', 'FECHA HORA', 'ESTADO DE PAGO',
+      'FOTO CARNET', 'FOTO VENTA', 'FOTO PATENTE', 'UBICACION', 'FIRMA', 'OBSERVACIONES'
+    ],
+    tableColumns: ['FECHA HORA', 'CONTROLADO POR', 'INSPECTOR ACOMPAÑANTE', 'ESTADO DE PAGO', 'OBSERVACIONES'],
     columns: [
       { name: 'ID', type: 'Text', isKey: true, initial: 'UNIQUEID', hiddenInForm: true },
-      { name: 'CONTROLADO POR', type: 'Text' },
+      { name: 'CONTROLADO POR', displayName: 'INSPECTOR A CARGO', type: 'Ref', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
+      { name: 'INSPECTOR ACOMPAÑANTE', displayName: 'INSPECTOR ACOMPAÑANTE DEL PROCEDIMIENTO', type: 'RefList', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
       { name: 'FECHA HORA', type: 'DateTime', initial: 'NOW' },
       { name: 'ESTADO DE PAGO', type: 'Enum', values: ['NO PAGA', 'PAGA DESPUES', 'SOLO VIERNES', 'SOLO SABADO', 'SOLO DOMINGO', 'VIERNES Y SABADO', 'SABADO Y DOMINGO', 'TODOS LOS DIAS', 'VIERNES Y DOMINGO'] },
       { name: 'FOTO CARNET', type: 'Image' },
@@ -1287,14 +1332,20 @@ var TABLE_SCHEMAS = {
     keyCol: '_RowNumber',
     labelCol: 'LOCAL COMERCIAL',
     hasPdfBot: false,
-    tableColumns: ['N° NOTIFICACION', 'LOCAL COMERCIAL', 'DIRECCION', 'FECHA DE NOTIFICACION', 'FECHA DE TERMINO', 'DIAS RESTANTES'],
+    formColumns: [
+      'INSPECTOR', 'INSPECTOR ACOMPAÑANTE', 'N° NOTIFICACION', 'LOCAL COMERCIAL',
+      'DIRECCION', 'FECHA DE NOTIFICACION', 'FECHA DE TERMINO'
+    ],
+    tableColumns: ['N° NOTIFICACION', 'INSPECTOR', 'INSPECTOR ACOMPAÑANTE', 'LOCAL COMERCIAL', 'DIRECCION', 'FECHA DE NOTIFICACION', 'FECHA DE TERMINO', 'DIAS RESTANTES'],
     columns: [
       { name: 'N° NOTIFICACION', type: 'Number' },
       { name: 'DIRECCION', type: 'Text' },
       { name: 'LOCAL COMERCIAL', type: 'LongText' },
       { name: 'FECHA DE NOTIFICACION', type: 'DateTime', initial: 'NOW' },
       { name: 'FECHA DE TERMINO', type: 'Date', initial: 'TODAY' },
-      { name: 'DIAS RESTANTES', type: 'Text', readOnly: true, formula: 'DAYS_REMAINING' }
+      { name: 'DIAS RESTANTES', type: 'Text', readOnly: true, formula: 'DAYS_REMAINING' },
+      { name: 'INSPECTOR', displayName: 'INSPECTOR A CARGO', type: 'Ref', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' },
+      { name: 'INSPECTOR ACOMPAÑANTE', displayName: 'INSPECTOR ACOMPAÑANTE DEL PROCEDIMIENTO', type: 'RefList', refTable: 'FUNCIONARIO', refCol: 'NOMBRE' }
     ]
   },
 
@@ -1381,10 +1432,38 @@ var APPSHEET_VIEW_MAP = {
     // ========================================================================
     // MOTOR DE CACHÉ ULTRA-RÁPIDO (STALE-WHILE-REVALIDATE + PREFETCH + DEDUP)
     // ========================================================================
-    var SWR_PREFIX = 'INSP_SWR_V1:';
+    var SWR_PREFIX = 'INSP_SWR_V2:';
     var memCache = {};
     var inFlight = {};
     var prefetchedOnce = false;
+
+    function normalizeFuncionarios(rawRows) {
+      var out = [];
+      var seen = {};
+      var norm = function(s) {
+        return String(s || '')
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+          .toUpperCase().replace(/\s+/g, ' ').trim();
+      };
+      var add = function(f) {
+        var nombre = String((f && (f.nombre || f.NOMBRE)) || '').trim();
+        var rol = String((f && (f.rol || f.ROL)) || '').trim();
+        if (!nombre) return;
+        if (/EQUIPO/i.test(rol) || /EQUIPO/i.test(nombre)) return;
+        var key = norm(nombre);
+        if (seen[key]) return;
+        seen[key] = true;
+        out.push({
+          id: (f && (f.id || f.ID)) || '',
+          nombre: nombre,
+          rol: rol || 'INSPECTOR',
+          imagen: (f && (f.imagen || f.IMAGEN)) || ''
+        });
+      };
+      (rawRows || []).forEach(add);
+      (APP_CONFIG.DEFAULT_FUNCIONARIOS || []).forEach(add);
+      return out;
+    }
 
     function getCacheKey(action, payload) {
       if (action === 'rows' || action === 'map') return action + ':' + ((payload && payload.table) || '');
@@ -1500,7 +1579,7 @@ var APPSHEET_VIEW_MAP = {
         },
         schemas: TABLE_SCHEMAS,
         viewMap: APPSHEET_VIEW_MAP,
-        funcionarios: [],
+        funcionarios: normalizeFuncionarios([]),
         navTables: {},
         driveFolders: {},
         dailyBackupEnabled: false
@@ -1523,6 +1602,10 @@ var APPSHEET_VIEW_MAP = {
         inFlight[ck] = fetchLiveGasRaw(action, payload)
           .then(function(res) {
             if (res && !res.error && res.ok !== false) {
+              if (action === 'bootstrap') {
+                res.schemas = TABLE_SCHEMAS;
+                res.funcionarios = normalizeFuncionarios(res.funcionarios);
+              }
               writeCache(ck, res);
               if (action === 'bootstrap' && window.App && App.applyLiveBootstrapUpdate) {
                 App.applyLiveBootstrapUpdate(res);
@@ -1606,7 +1689,7 @@ var APPSHEET_VIEW_MAP = {
             config: { appName: APP_CONFIG.APP_NAME, subtitle: APP_CONFIG.SUBTITLE, creator: APP_CONFIG.CREATOR, contact: APP_CONFIG.CONTACT, primaryColor: APP_CONFIG.PRIMARY_COLOR },
             schemas: TABLE_SCHEMAS,
             viewMap: APPSHEET_VIEW_MAP,
-            funcionarios: funcs.map(function(f){ return { id: f.ID || '', nombre: f.NOMBRE || '', rol: f.ROL || '', imagen: f.IMAGEN || '' }; }).filter(function(f){ return f.nombre; }),
+            funcionarios: normalizeFuncionarios(funcs),
             navTables: {
               MENU: getMergedRows(db, 'MENU'),
               SUBMENU: getMergedRows(db, 'SUBMENU'),
@@ -1772,6 +1855,7 @@ var APPSHEET_VIEW_MAP = {
           estado: payload.estado || 'ASISTE',
           medio: payload.medio || 'MANUAL',
           inspector: payload.inspector || '',
+          inspectorAcompanante: payload.inspectorAcompanante || '',
           ubicacion: payload.ubicacion || '',
           observaciones: payload.observaciones || ''
         };
@@ -1839,6 +1923,7 @@ const App = {
     feria: '',
     fecha: new Date().toISOString().slice(0, 10),
     inspector: '',
+    inspectorAcompanante: [],
     filter: 'ALL',
     query: '',
     allAsistenciaRows: [],
@@ -2154,6 +2239,43 @@ const App = {
   },
 
   // ==========================================================================
+  // LISTADO DE INSPECTORES (SIN EQUIPO + INCLUYE TAMARA MARTINEZ)
+  // ==========================================================================
+  getInspectorsList() {
+    const fallback = [
+      { nombre: 'Luis Zamorano Vásquez', rol: 'Inspector Comercial' },
+      { nombre: 'JHON NAVARRETE', rol: 'INSPECTOR' },
+      { nombre: 'SERGIO OYARCE', rol: 'INSPECTOR' },
+      { nombre: 'ENRIQUE RODRIGUEZ', rol: 'INSPECTOR' },
+      { nombre: 'NICOLAS ZAMORANO', rol: 'INSPECTOR' },
+      { nombre: 'LEONARDO VALENZUELA', rol: 'INSPECTOR' },
+      { nombre: 'LEONARDO HERRERA', rol: 'INSPECTOR' },
+      { nombre: 'PATRICIO CANCINO', rol: 'INSPECTOR' },
+      { nombre: 'TAMARA MARTINEZ', rol: 'INSPECTOR' }
+    ];
+    const norm = s => String(s || '')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase().replace(/\s+/g, ' ').trim();
+
+    const out = [];
+    const seen = {};
+    const add = (f) => {
+      const nombre = String((f && (f.nombre || f.NOMBRE)) || '').trim();
+      const rol = String((f && (f.rol || f.ROL)) || '').trim();
+      if (!nombre) return;
+      if (/EQUIPO/i.test(rol) || /EQUIPO/i.test(nombre)) return;
+      const key = norm(nombre);
+      if (seen[key]) return;
+      seen[key] = true;
+      out.push({ nombre, rol: rol || 'INSPECTOR' });
+    };
+
+    ((this.boot && this.boot.funcionarios) || []).forEach(add);
+    fallback.forEach(add);
+    return out;
+  },
+
+  // ==========================================================================
   // FORMULARIO DINÁMICO (DESPLEGABLES SIMPLES + DESPLEGABLES MULTI-SELECCIÓN)
   // ==========================================================================
   renderForm(tableName, existingRecord) {
@@ -2165,6 +2287,8 @@ const App = {
     const orderedColNames = schema.formColumns || schema.columns.map(c => c.name);
     const colMap = {};
     schema.columns.forEach(c => colMap[c.name] = c);
+
+    const inspectors = this.getInspectorsList();
 
     let fieldsHtml = '';
     orderedColNames.forEach(colName => {
@@ -2179,12 +2303,31 @@ const App = {
       let extraClass = '';
 
       if (col.type === 'Ref' && col.refTable === 'FUNCIONARIO') {
-        inputHtml = '<select class="form-control" data-col="' + this.esc(col.name) + '"><option value="">-- Seleccionar Inspector --</option>';
-        (this.boot.funcionarios || []).forEach(f => {
-          const sel = String(val) === String(f.nombre) ? ' selected' : '';
+        inputHtml = '<select class="form-control" data-col="' + this.esc(col.name) + '"><option value="">-- Seleccionar Inspector a Cargo --</option>';
+        let matched = false;
+        inspectors.forEach(f => {
+          const isSel = String(val).trim().toUpperCase() === String(f.nombre).trim().toUpperCase();
+          if (isSel) matched = true;
+          const sel = isSel ? ' selected' : '';
           inputHtml += '<option value="' + this.esc(f.nombre) + '"' + sel + '>' + this.esc(f.nombre) + (f.rol ? ' (' + this.esc(f.rol) + ')' : '') + '</option>';
         });
+        if (val && !matched) {
+          inputHtml += '<option value="' + this.esc(val) + '" selected>' + this.esc(val) + '</option>';
+        }
         inputHtml += '</select>';
+      } else if (col.type === 'RefList' && col.refTable === 'FUNCIONARIO') {
+        const selectedArr = String(val || '').split(',').map(s => s.trim()).filter(Boolean);
+        const inspectorOpts = inspectors.map(f => ({
+          value: f.nombre,
+          label: f.nombre + (f.rol ? ' (' + f.rol + ')' : '')
+        }));
+        inputHtml = this._renderMultiSelectDropdown(
+          fieldId,
+          col.name,
+          inspectorOpts,
+          selectedArr,
+          'Seleccionar uno o varios inspectores acompañantes...'
+        );
       } else if (col.type === 'Enum') {
         inputHtml = '<select class="form-control" data-col="' + this.esc(col.name) + '"><option value="">-- Seleccionar opción --</option>';
         (col.values || []).forEach(opt => {
@@ -2247,34 +2390,49 @@ const App = {
     this.initSignaturePads();
   },
 
-  _renderMultiSelectDropdown(fieldId, colName, values, selectedArr) {
+  _renderMultiSelectDropdown(fieldId, colName, values, selectedArr, placeholder, onChangeCallback) {
+    const ph = placeholder || 'Seleccionar una o varias opciones...';
+    const selectedUpper = (selectedArr || []).map(v => String(v).trim().toUpperCase());
     let tagsHtml = '';
-    if (selectedArr.length === 0) {
-      tagsHtml = '<span class="ms-placeholder">Seleccionar una o varias opciones...</span>';
+    if (!selectedArr || selectedArr.length === 0) {
+      tagsHtml = '<span class="ms-placeholder">' + this.esc(ph) + '</span>';
     } else {
       selectedArr.forEach(v => {
         tagsHtml += '<span class="ms-tag">' + this.esc(v) + '</span>';
       });
     }
 
+    const changeAttr = onChangeCallback
+      ? 'App.syncMultiSelect(\'' + fieldId + '\');' + onChangeCallback
+      : 'App.syncMultiSelect(\'' + fieldId + '\')';
+
     let optsHtml = '';
-    values.forEach(opt => {
-      const checked = selectedArr.indexOf(opt) !== -1 ? ' checked' : '';
+    (values || []).forEach(opt => {
+      const optVal = typeof opt === 'object' && opt !== null ? opt.value : opt;
+      const optLabel = typeof opt === 'object' && opt !== null ? (opt.label || opt.value) : opt;
+      const checked = selectedUpper.indexOf(String(optVal).trim().toUpperCase()) !== -1 ? ' checked' : '';
       optsHtml += '<label class="ms-opt" style="text-transform:none;font-weight:400;margin:0;letter-spacing:0;">' +
-        '<input type="checkbox" value="' + this.esc(opt) + '"' + checked + ' onchange="App.syncMultiSelect(\'' + fieldId + '\')">' +
-        '<span>' + this.esc(opt) + '</span></label>';
+        '<input type="checkbox" value="' + this.esc(optVal) + '"' + checked + ' onchange="' + changeAttr + '">' +
+        '<span>' + this.esc(optLabel) + '</span></label>';
     });
+
+    const setAllTrue = onChangeCallback
+      ? 'App.setAllMultiSelect(\'' + fieldId + '\', true);' + onChangeCallback
+      : 'App.setAllMultiSelect(\'' + fieldId + '\', true)';
+    const setAllFalse = onChangeCallback
+      ? 'App.setAllMultiSelect(\'' + fieldId + '\', false);' + onChangeCallback
+      : 'App.setAllMultiSelect(\'' + fieldId + '\', false)';
 
     return '<div class="ms-dropdown" id="ms_' + fieldId + '" data-enumlist="' + this.esc(colName) + '">' +
       '<div class="ms-trigger" onclick="App.toggleMultiSelect(\'' + fieldId + '\')">' +
-      '<div class="ms-tags" id="ms_tags_' + fieldId + '" style="display:flex;flex-wrap:wrap;gap:5px;">' + tagsHtml + '</div>' +
+      '<div class="ms-tags" id="ms_tags_' + fieldId + '" data-placeholder="' + this.esc(ph) + '" style="display:flex;flex-wrap:wrap;gap:5px;">' + tagsHtml + '</div>' +
       '<span class="material-icons ms-arrow">expand_more</span>' +
       '</div>' +
       '<div class="ms-panel">' +
       '<input type="text" class="ms-search" placeholder="Filtrar opciones..." oninput="App.filterMultiSelect(\'' + fieldId + '\', this.value)">' +
       '<div class="ms-actions">' +
-      '<button type="button" onclick="App.setAllMultiSelect(\'' + fieldId + '\', true)">Seleccionar todas</button>' +
-      '<button type="button" onclick="App.setAllMultiSelect(\'' + fieldId + '\', false)">Limpiar</button>' +
+      '<button type="button" onclick="' + setAllTrue + '">Seleccionar todas</button>' +
+      '<button type="button" onclick="' + setAllFalse + '">Limpiar</button>' +
       '<button type="button" onclick="App.toggleMultiSelect(\'' + fieldId + '\')">Listo ✓</button>' +
       '</div>' +
       '<div class="ms-options" id="ms_opts_' + fieldId + '">' + optsHtml + '</div>' +
@@ -2307,9 +2465,10 @@ const App = {
   syncMultiSelect(fieldId) {
     const box = document.getElementById('ms_tags_' + fieldId);
     if (!box) return;
+    const ph = box.getAttribute('data-placeholder') || 'Seleccionar una o varias opciones...';
     const vals = Array.from(document.querySelectorAll('#ms_opts_' + fieldId + ' input[type="checkbox"]:checked')).map(c => c.value);
     if (vals.length === 0) {
-      box.innerHTML = '<span class="ms-placeholder">Seleccionar una o varias opciones...</span>';
+      box.innerHTML = '<span class="ms-placeholder">' + this.esc(ph) + '</span>';
     } else {
       box.innerHTML = vals.map(v => '<span class="ms-tag">' + this.esc(v) + '</span>').join('');
     }
@@ -2510,8 +2669,15 @@ const App = {
     if (filtered.length === 0) {
       html += '<div class="card" style="text-align:center;color:var(--muted);">No se encontraron registros.</div>';
     } else {
+      const colMap = {};
+      (schema.columns || []).forEach(c => colMap[c.name] = c);
       html += '<div class="table-wrap"><table class="data-table"><thead><tr>';
-      cols.forEach(c => html += '<th>' + this.esc(c) + '</th>');
+      cols.forEach(c => {
+        const hdr = c === 'INSPECTOR ACOMPAÑANTE'
+          ? 'INSPECTOR ACOMPAÑANTE'
+          : ((colMap[c] && colMap[c].displayName) || c);
+        html += '<th>' + this.esc(hdr) + '</th>';
+      });
       html += '<th>ACCIONES</th></tr></thead><tbody>';
 
       filtered.slice(0, 1000).forEach(r => {
@@ -3424,11 +3590,24 @@ const App = {
     });
     const pendientes = Math.max(ocupados - (asisten + noAsisten), 0);
 
-    let inspectorOpts = '<option value="">-- Inspector que toma asistencia --</option>';
-    (this.boot.funcionarios || []).forEach(f => {
+    const inspectors = this.getInspectorsList();
+    let inspectorOpts = '<option value="">-- Seleccionar Inspector a Cargo --</option>';
+    inspectors.forEach(f => {
       const sel = st.inspector === f.nombre ? ' selected' : '';
-      inspectorOpts += '<option value="' + this.esc(f.nombre) + '"' + sel + '>' + this.esc(f.nombre) + '</option>';
+      inspectorOpts += '<option value="' + this.esc(f.nombre) + '"' + sel + '>' + this.esc(f.nombre) + (f.rol ? ' (' + this.esc(f.rol) + ')' : '') + '</option>';
     });
+    const acompOpts = inspectors.map(f => ({
+      value: f.nombre,
+      label: f.nombre + (f.rol ? ' (' + f.rol + ')' : '')
+    }));
+    const acompDropdownHtml = this._renderMultiSelectDropdown(
+      'feria_acomp',
+      'INSPECTOR ACOMPAÑANTE',
+      acompOpts,
+      st.inspectorAcompanante || [],
+      'Seleccionar acompañante(s)...',
+      'App.syncFeriaAcompanantes()'
+    );
 
     const filterBtns = [
       { id: 'ALL', label: 'Todos (1-100)' },
@@ -3468,13 +3647,15 @@ const App = {
       '<button class="btn btn-success btn-sm" onclick="App.exportFeriaAttendanceXLSX()"><span class="material-icons" style="font-size:16px;">table_view</span> Excel Asistencia (.xlsx)</button>' +
       '</div></div>';
 
-    // Barra de fecha e inspector
+    // Barra de fecha e inspectores
     html += '<div class="card" style="padding:12px 14px;margin-bottom:14px;">' +
-      '<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;">' +
+      '<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start;">' +
       '<div><label style="font-size:11px;font-weight:700;color:var(--muted);display:block;">FECHA JORNADA</label>' +
       '<input type="date" class="form-control" style="width:165px;" value="' + this.esc(st.fecha) + '" onchange="App.feriaState.fecha=this.value;App.renderFeriaFicha(App.feriaState.feria)"></div>' +
-      '<div style="flex:1;min-width:210px;"><label style="font-size:11px;font-weight:700;color:var(--muted);display:block;">INSPECTOR RESPONSABLE</label>' +
+      '<div style="flex:1;min-width:210px;"><label style="font-size:11px;font-weight:700;color:var(--muted);display:block;">INSPECTOR A CARGO</label>' +
       '<select class="form-control" onchange="App.feriaState.inspector=this.value">' + inspectorOpts + '</select></div>' +
+      '<div style="flex:1;min-width:230px;"><label style="font-size:11px;font-weight:700;color:var(--muted);display:block;">INSPECTOR ACOMPAÑANTE DEL PROCEDIMIENTO</label>' +
+      acompDropdownHtml + '</div>' +
       '<div style="flex:1;min-width:210px;"><label style="font-size:11px;font-weight:700;color:var(--muted);display:block;">BUSCAR PUESTO / FERIANTE</label>' +
       '<input type="search" class="form-control" placeholder="N° puesto, nombre, RUT o ROL..." value="' + this.esc(st.query) + '" oninput="App.feriaState.query=this.value;App._paintFeriaFicha()"></div>' +
       '</div></div>';
@@ -3559,6 +3740,12 @@ const App = {
     });
   },
 
+  syncFeriaAcompanantes() {
+    this.feriaState.inspectorAcompanante = Array.from(
+      document.querySelectorAll('#ms_opts_feria_acomp input[type="checkbox"]:checked')
+    ).map(c => c.value);
+  },
+
   markFeriaAttendance(puestoNum, estado, medio) {
     const st = this.feriaState;
     const stall = st.stalls.find(s => s.puesto === Number(puestoNum));
@@ -3577,6 +3764,7 @@ const App = {
       estado: estado,
       medio: medio || 'MANUAL',
       inspector: st.inspector || (this.boot && this.boot.user ? this.boot.user.email : ''),
+      inspectorAcompanante: (st.inspectorAcompanante || []).join(' , '),
       ubicacion: r['UBICACION'] || '',
       observaciones: r['OBSERVACIONES'] || ''
     };
@@ -3933,7 +4121,7 @@ const App = {
     const headers = [
       'FECHA_JORNADA', 'FERIA', 'N_PUESTO', 'CODIGO_QR', 'ID_FERIANTE',
       'NOMBRE_DUENO', 'RUT_DUENO', 'ROL', 'PATENTE', 'GIRO', 'DIA',
-      'UBICACION_PUESTO', 'ESTADO_ASISTENCIA', 'MEDIO_INGRESO', 'HORA_MARCA', 'INSPECTOR', 'OBSERVACIONES'
+      'UBICACION_PUESTO', 'ESTADO_ASISTENCIA', 'MEDIO_INGRESO', 'HORA_MARCA', 'INSPECTOR A CARGO', 'INSPECTOR ACOMPAÑANTE', 'OBSERVACIONES'
     ];
     const aoa = [headers];
     st.stalls.forEach(s => {
@@ -3944,7 +4132,7 @@ const App = {
         r['NOMBRE DUEÑO'] || 'DISPONIBLE', r['RUT DUEÑO'] || '', r['ROL'] || '',
         r['PATENTE'] || '', r['GIRO'] || '', r['DIA'] || '', r['UBICACION'] || '',
         m.estado || (s.record ? 'PENDIENTE' : 'SIN ASIGNAR'),
-        m.medio || '', m.hora || '', m.inspector || '', r['OBSERVACIONES'] || ''
+        m.medio || '', m.hora || '', m.inspector || '', m.inspectorAcompanante || '', r['OBSERVACIONES'] || ''
       ]);
     });
 

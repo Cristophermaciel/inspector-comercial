@@ -28,10 +28,38 @@ if (typeof google === 'undefined' || !google.script) {
     // ========================================================================
     // MOTOR DE CACHÉ ULTRA-RÁPIDO (STALE-WHILE-REVALIDATE + PREFETCH + DEDUP)
     // ========================================================================
-    var SWR_PREFIX = 'INSP_SWR_V1:';
+    var SWR_PREFIX = 'INSP_SWR_V2:';
     var memCache = {};
     var inFlight = {};
     var prefetchedOnce = false;
+
+    function normalizeFuncionarios(rawRows) {
+      var out = [];
+      var seen = {};
+      var norm = function(s) {
+        return String(s || '')
+          .normalize('NFD').replace(/[\\u0300-\\u036f]/g, '')
+          .toUpperCase().replace(/\\s+/g, ' ').trim();
+      };
+      var add = function(f) {
+        var nombre = String((f && (f.nombre || f.NOMBRE)) || '').trim();
+        var rol = String((f && (f.rol || f.ROL)) || '').trim();
+        if (!nombre) return;
+        if (/EQUIPO/i.test(rol) || /EQUIPO/i.test(nombre)) return;
+        var key = norm(nombre);
+        if (seen[key]) return;
+        seen[key] = true;
+        out.push({
+          id: (f && (f.id || f.ID)) || '',
+          nombre: nombre,
+          rol: rol || 'INSPECTOR',
+          imagen: (f && (f.imagen || f.IMAGEN)) || ''
+        });
+      };
+      (rawRows || []).forEach(add);
+      (APP_CONFIG.DEFAULT_FUNCIONARIOS || []).forEach(add);
+      return out;
+    }
 
     function getCacheKey(action, payload) {
       if (action === 'rows' || action === 'map') return action + ':' + ((payload && payload.table) || '');
@@ -147,7 +175,7 @@ if (typeof google === 'undefined' || !google.script) {
         },
         schemas: TABLE_SCHEMAS,
         viewMap: APPSHEET_VIEW_MAP,
-        funcionarios: [],
+        funcionarios: normalizeFuncionarios([]),
         navTables: {},
         driveFolders: {},
         dailyBackupEnabled: false
@@ -170,6 +198,10 @@ if (typeof google === 'undefined' || !google.script) {
         inFlight[ck] = fetchLiveGasRaw(action, payload)
           .then(function(res) {
             if (res && !res.error && res.ok !== false) {
+              if (action === 'bootstrap') {
+                res.schemas = TABLE_SCHEMAS;
+                res.funcionarios = normalizeFuncionarios(res.funcionarios);
+              }
               writeCache(ck, res);
               if (action === 'bootstrap' && window.App && App.applyLiveBootstrapUpdate) {
                 App.applyLiveBootstrapUpdate(res);
@@ -253,7 +285,7 @@ if (typeof google === 'undefined' || !google.script) {
             config: { appName: APP_CONFIG.APP_NAME, subtitle: APP_CONFIG.SUBTITLE, creator: APP_CONFIG.CREATOR, contact: APP_CONFIG.CONTACT, primaryColor: APP_CONFIG.PRIMARY_COLOR },
             schemas: TABLE_SCHEMAS,
             viewMap: APPSHEET_VIEW_MAP,
-            funcionarios: funcs.map(function(f){ return { id: f.ID || '', nombre: f.NOMBRE || '', rol: f.ROL || '', imagen: f.IMAGEN || '' }; }).filter(function(f){ return f.nombre; }),
+            funcionarios: normalizeFuncionarios(funcs),
             navTables: {
               MENU: getMergedRows(db, 'MENU'),
               SUBMENU: getMergedRows(db, 'SUBMENU'),
@@ -419,6 +451,7 @@ if (typeof google === 'undefined' || !google.script) {
           estado: payload.estado || 'ASISTE',
           medio: payload.medio || 'MANUAL',
           inspector: payload.inspector || '',
+          inspectorAcompanante: payload.inspectorAcompanante || '',
           ubicacion: payload.ubicacion || '',
           observaciones: payload.observaciones || ''
         };
