@@ -20,8 +20,10 @@ if (typeof google === 'undefined' || !google.script) {
   (function() {
     ${configGs.replace(/const /g, 'var ')}
 
-    var LIVE_API_URL = (localStorage.getItem('INSPECTOR_GAS_API_URL') || '').trim();
+    var DEFAULT_GAS_API_URL = 'https://script.google.com/macros/s/AKfycbwZo8HgRFojCedsb0_zP7tXjMKxqdSY_5YIX-Auz-WJuQYWMIPjkW3tygRAndrvrupZpg/exec';
+    var LIVE_API_URL = (localStorage.getItem('INSPECTOR_GAS_API_URL') || DEFAULT_GAS_API_URL).trim();
     window.__GAS_LIVE_CONNECTED__ = Boolean(LIVE_API_URL);
+    window.__DEFAULT_GAS_API_URL__ = DEFAULT_GAS_API_URL;
 
     function callLiveGas(action, payload) {
       var isRead = (action === 'bootstrap' || action === 'rows' || action === 'dashboard' || action === 'map' || action === 'listExcelBackups' || action === 'feriaAttendance');
