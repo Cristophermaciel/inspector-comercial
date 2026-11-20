@@ -149,29 +149,50 @@ const DataService = {
       });
 
       // Columna virtual DIAS RESTANTES para Hoja 1 (Notificaciones por Deudas)
-      if (tableName === 'Hoja 1' && obj['FECHA DE TERMINO']) {
-        obj['DIAS RESTANTES'] = this._computeDaysRemaining(rowArr[headers.indexOf('FECHA DE TERMINO')]);
+      if (tableName === 'Hoja 1') {
+        const termIdx = headers.indexOf('FECHA DE TERMINO');
+        const computed = termIdx !== -1 ? this._computeDaysRemaining(rowArr[termIdx]) : '';
+        if (computed !== '') {
+          obj['DIAS RESTANTES'] = computed;
+        } else if (obj['DIAS RESTANTES'] !== '' && obj['DIAS RESTANTES'] !== undefined && !isNaN(Number(obj['DIAS RESTANTES']))) {
+          obj['DIAS RESTANTES'] = String(Math.round(Number(obj['DIAS RESTANTES'])));
+        }
       }
 
       rows.push(obj);
     }
 
-    // Orden por defecto (ej. LISTADO DE FERIANTES por N° Puesto)
+    // Orden por defecto (ej. LISTADO DE FERIANTES por N° Puesto, Hoja 1 por DIAS RESTANTES)
     if (schema.defaultSort) {
       const col = schema.defaultSort.column;
       const dir = schema.defaultSort.asc ? 1 : -1;
       rows.sort((a, b) => {
-        const na = Number(a[col]);
-        const nb = Number(b[col]);
-        if (!isNaN(na) && !isNaN(nb)) return (na - nb) * dir;
-        return String(a[col] || '').localeCompare(String(b[col] || '')) * dir;
+        const va = a[col];
+        const vb = b[col];
+        const emptyA = va === '' || va === null || va === undefined;
+        const emptyB = vb === '' || vb === null || vb === undefined;
+        if (emptyA && emptyB) return 0;
+        if (emptyA) return 1;
+        if (emptyB) return -1;
+        const na = Number(va);
+        const nb = Number(vb);
+        if (!isNaN(na) && !isNaN(nb)) {
+          if (na !== nb) return (na - nb) * dir;
+          if (tableName === 'Hoja 1') {
+            const numA = Number(a['N° NOTIFICACION']) || 0;
+            const numB = Number(b['N° NOTIFICACION']) || 0;
+            return numA - numB;
+          }
+          return 0;
+        }
+        return String(va || '').localeCompare(String(vb || '')) * dir;
       });
     } else {
       // Más recientes primero
       rows.reverse();
     }
 
-    // Columna virtual TOTAL RECAUDADO en PATENTES EN MORA
+    // Columna virtual TOTAL RECAUDADO en PATENTES EN MORA y resumen de vencidos en Hoja 1
     const summary = {};
     if (tableName === 'PATENTES EN MORA') {
       let totalMora = 0;
@@ -182,6 +203,20 @@ const DataService = {
         }
       });
       summary.totalPatentesMorosas = totalMora;
+    } else if (tableName === 'Hoja 1') {
+      let vencidos = 0, vencenHoy = 0, vigentes = 0;
+      rows.forEach(row => {
+        const raw = row['DIAS RESTANTES'];
+        if (raw === '' || raw === null || raw === undefined) return;
+        const n = Number(raw);
+        if (isNaN(n)) return;
+        if (n < 0) vencidos++;
+        else if (n === 0) vencenHoy++;
+        else vigentes++;
+      });
+      summary.vencidosNoPago = vencidos;
+      summary.vencenHoy = vencenHoy;
+      summary.vigentes = vigentes;
     }
 
     return { tableName, headers, rows, summary };
@@ -382,6 +417,20 @@ const DataService = {
     const reportes = this._safeReadRows('REPORTE');
     const feriantes = this._safeReadRows('ASISTENCIA');
     const feriasNavidenas = this._safeReadRows('FERIAS NAVIDEÑAS');
+    const notificaciones = this._safeReadRows('Hoja 1');
+
+    let totalVencidosNoPago = 0;
+    let totalVencenHoy = 0;
+    let totalNotifVigentes = 0;
+    notificaciones.forEach(r => {
+      const raw = r['DIAS RESTANTES'];
+      if (raw === '' || raw === null || raw === undefined) return;
+      const n = Number(raw);
+      if (isNaN(n)) return;
+      if (n < 0) totalVencidosNoPago++;
+      else if (n === 0) totalVencenHoy++;
+      else totalNotifVigentes++;
+    });
 
     const countBy = (arr, col) => {
       const map = {};
@@ -416,7 +465,10 @@ const DataService = {
         totalAlDiaMonto: totalAlDia,
         totalReportes: reportes.length,
         totalFeriantes: feriantes.length,
-        totalFeriasNavidenas: feriasNavidenas.length
+        totalFeriasNavidenas: feriasNavidenas.length,
+        totalNotificaciones: notificaciones.length,
+        totalVencidosNoPago: totalVencidosNoPago,
+        totalNotifVigentes: totalNotifVigentes
       },
       charts: {
         topPublicidad: countBy(publicidad, 'INSPECTOR'),
@@ -424,7 +476,12 @@ const DataService = {
         topFueraHora: countBy(fueraHora, 'INSPECTOR'),
         permisoAlDia: countBy(comercio, 'PERMISO AL DIA'),
         valorPatentesMora: Object.keys(moraPorEstado).map(k => ({ label: k, value: moraPorEstado[k] })),
-        totalesPatentesMora: countBy(mora, 'ESTADO PATENTE')
+        totalesPatentesMora: countBy(mora, 'ESTADO PATENTE'),
+        estadoNotificacionesDeudas: [
+          { label: 'Vencidos por No Pago', value: totalVencidosNoPago },
+          { label: 'Vencen Hoy', value: totalVencenHoy },
+          { label: 'En Plazo / Vigentes', value: totalNotifVigentes }
+        ]
       }
     };
   },
@@ -467,8 +524,22 @@ const DataService = {
 
   _computeDaysRemaining(dateVal) {
     if (!dateVal) return '';
-    const d = dateVal instanceof Date ? dateVal : new Date(dateVal);
-    if (isNaN(d.getTime())) return '';
+    let d = null;
+    if (dateVal instanceof Date) {
+      d = new Date(dateVal.getTime());
+    } else {
+      const s = String(dateVal).trim();
+      const dmy = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+      const ymd = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+      if (dmy) {
+        d = new Date(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]));
+      } else if (ymd) {
+        d = new Date(Number(ymd[1]), Number(ymd[2]) - 1, Number(ymd[3]));
+      } else {
+        d = new Date(s);
+      }
+    }
+    if (!d || isNaN(d.getTime())) return '';
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     d.setHours(0, 0, 0, 0);

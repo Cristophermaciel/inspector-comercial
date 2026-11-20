@@ -438,6 +438,7 @@ const TABLE_SCHEMAS = {
     keyCol: '_RowNumber',
     labelCol: 'LOCAL COMERCIAL',
     hasPdfBot: false,
+    defaultSort: { column: 'DIAS RESTANTES', asc: true },
     formColumns: [
       'INSPECTOR', 'INSPECTOR ACOMPAÑANTE', 'N° NOTIFICACION', 'LOCAL COMERCIAL',
       'DIRECCION', 'FECHA DE NOTIFICACION', 'FECHA DE TERMINO'
