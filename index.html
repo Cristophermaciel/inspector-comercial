@@ -1841,7 +1841,7 @@ const App = {
       html += '<div class="section-header"><h2>' + this.esc(this.currentRoute.title) + '</h2></div>';
     }
 
-    if (rows.length > 0) {
+    if (tableName !== 'MENU' && rows.length > 0) {
       html += '<div class="gallery-grid" style="margin-bottom:22px;">';
       rows.forEach(r => {
         const title = r[labelKey] || r['VISTA'] || 'Opción';
