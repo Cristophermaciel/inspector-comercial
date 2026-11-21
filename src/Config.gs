@@ -9,7 +9,11 @@
 const APP_CONFIG = {
   APP_NAME: 'Departamento de Inspectores Comerciales',
   SHORT_NAME: 'INSPECTOR COMERCIAL',
+  MUNICIPALITY: 'Ilustre Municipalidad de Peñaflor',
   SUBTITLE: 'Seguridad Pública Municipalidad de Peñaflor',
+  DEPARTMENT_UNIT: 'Dirección de Seguridad Pública',
+  DEPARTMENT_HEAD_NAME: 'David Hernández Salum',
+  DEPARTMENT_HEAD_TITLE: 'Jefe de Inspectores Comerciales',
   CREATOR: 'CREADOR CRISTOPHER MACIEL',
   CONTACT: 'CONTACTO 1410',
   PRIMARY_COLOR: '#0c347d',

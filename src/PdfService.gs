@@ -10,6 +10,88 @@
  */
 
 const PdfService = {
+  _logoDataUriCache: null,
+
+  /**
+   * Obtiene el logo oficial de la Municipalidad de Peñaflor embebido en base64
+   * para garantizar su renderizado en todos los PDFs generados desde HTML.
+   */
+  _getLogoDataUri() {
+    if (this._logoDataUriCache) return this._logoDataUriCache;
+    const logoUrl = APP_CONFIG.LOGO_URL || 'https://cristophermaciel.github.io/inspector-comercial/assets/logo-penaflor.jpg';
+    try {
+      const resp = UrlFetchApp.fetch(logoUrl, { muteHttpExceptions: true });
+      if (resp && resp.getResponseCode() === 200) {
+        const blob = resp.getBlob();
+        const mime = blob.getContentType() || 'image/jpeg';
+        const b64 = Utilities.base64Encode(blob.getBytes());
+        this._logoDataUriCache = 'data:' + mime + ';base64,' + b64;
+        return this._logoDataUriCache;
+      }
+    } catch (e) {
+      Logger.log('Aviso cargando logo oficial para PDF: ' + e.message);
+    }
+    return logoUrl;
+  },
+
+  /**
+   * Membrete oficial institucional con logo de la Ilustre Municipalidad de Peñaflor.
+   */
+  _buildOfficialHeaderHtml(docTitle, docSubtitle, badgeText) {
+    const logoSrc = this._getLogoDataUri();
+    const muni = APP_CONFIG.MUNICIPALITY || 'Ilustre Municipalidad de Peñaflor';
+    const unit = APP_CONFIG.DEPARTMENT_UNIT || 'Dirección de Seguridad Pública';
+    const dept = APP_CONFIG.APP_NAME || 'Departamento de Inspectores Comerciales';
+
+    return '<table style="width:100%;border-collapse:collapse;border-bottom:3px solid #0c347d;padding-bottom:8px;margin-bottom:12px;">' +
+      '<tr>' +
+        '<td style="width:78px;vertical-align:middle;padding:0 10px 8px 0;">' +
+          '<img src="' + logoSrc + '" alt="Logo Municipalidad de Peñaflor" style="width:68px;height:auto;max-height:72px;object-fit:contain;display:block;">' +
+        '</td>' +
+        '<td style="vertical-align:middle;padding:0 0 8px 0;">' +
+          '<div style="font-size:10px;font-weight:bold;color:#475467;text-transform:uppercase;letter-spacing:0.5px;">' + this._esc(muni) + ' · ' + this._esc(unit) + '</div>' +
+          '<div style="font-size:16px;font-weight:bold;color:#0c347d;margin-top:1px;">' + this._esc(dept) + '</div>' +
+          '<div style="font-size:11.5px;color:#344054;margin-top:2px;"><strong>' + this._esc(docTitle || '') + '</strong>' + (docSubtitle ? (' — ' + this._esc(docSubtitle)) : '') + '</div>' +
+          (badgeText ? ('<div style="display:inline-block;background:#0c347d;color:#ffffff;padding:3px 10px;border-radius:12px;font-size:10px;font-weight:bold;margin-top:5px;">' + this._esc(badgeText) + '</div>') : '') +
+        '</td>' +
+      '</tr>' +
+    '</table>';
+  },
+
+  /**
+   * Bloque formal de firma / V°B° del Titular Responsable del Departamento.
+   */
+  _buildOfficialSignatureBlockHtml(leftName, leftRole) {
+    const headName = APP_CONFIG.DEPARTMENT_HEAD_NAME || 'David Hernández Salum';
+    const headTitle = APP_CONFIG.DEPARTMENT_HEAD_TITLE || 'Jefe de Inspectores Comerciales';
+    const muni = APP_CONFIG.MUNICIPALITY || 'Ilustre Municipalidad de Peñaflor';
+    const dept = APP_CONFIG.APP_NAME || 'Departamento de Inspectores Comerciales';
+
+    const rightBox =
+      '<div style="width:260px;margin:0 auto;text-align:center;">' +
+        '<div style="border-top:1.5px solid #0c347d;padding-top:6px;margin-top:34px;">' +
+          '<div style="font-size:11.5px;font-weight:bold;color:#0c347d;">' + this._esc(headName) + '</div>' +
+          '<div style="font-size:10px;font-weight:bold;color:#344054;margin-top:1px;">' + this._esc(headTitle) + '</div>' +
+          '<div style="font-size:9px;color:#667085;margin-top:1px;">Titular Responsable · ' + this._esc(dept) + '</div>' +
+          '<div style="font-size:9px;color:#667085;">' + this._esc(muni) + '</div>' +
+        '</div>' +
+      '</div>';
+
+    if (leftName) {
+      const leftBox =
+        '<div style="width:240px;margin:0 auto;text-align:center;">' +
+          '<div style="border-top:1.5px solid #475467;padding-top:6px;margin-top:34px;">' +
+            '<div style="font-size:11px;font-weight:bold;color:#1d2939;">' + this._esc(leftName) + '</div>' +
+            '<div style="font-size:9.5px;color:#475467;margin-top:1px;">' + this._esc(leftRole || 'Inspector Responsable') + '</div>' +
+          '</div>' +
+        '</div>';
+      return '<table style="width:100%;border-collapse:collapse;margin-top:18px;page-break-inside:avoid;">' +
+        '<tr><td style="width:50%;vertical-align:bottom;">' + leftBox + '</td>' +
+        '<td style="width:50%;vertical-align:bottom;">' + rightBox + '</td></tr></table>';
+    }
+
+    return '<div style="margin-top:18px;page-break-inside:avoid;">' + rightBox + '</div>';
+  },
 
   /**
    * Genera el PDF para un registro usando la plantilla original de Google Docs
@@ -73,8 +155,14 @@ const PdfService = {
       const header = doc.getHeader();
       const footer = doc.getFooter();
 
-      Object.keys(record).forEach(col => {
-        const val = record[col] !== undefined && record[col] !== null ? String(record[col]) : '';
+      const enrichedRecord = Object.assign({
+        'JEFE_DEPARTAMENTO': APP_CONFIG.DEPARTMENT_HEAD_NAME || 'David Hernández Salum',
+        'CARGO_JEFE': APP_CONFIG.DEPARTMENT_HEAD_TITLE || 'Jefe de Inspectores Comerciales',
+        'MUNICIPALIDAD': APP_CONFIG.MUNICIPALITY || 'Ilustre Municipalidad de Peñaflor'
+      }, record || {});
+
+      Object.keys(enrichedRecord).forEach(col => {
+        const val = enrichedRecord[col] !== undefined && enrichedRecord[col] !== null ? String(enrichedRecord[col]) : '';
         const escapedCol = col.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const pattern = '<<\\[' + escapedCol + '\\]>>';
         body.replaceText(pattern, val);
@@ -129,16 +217,16 @@ const PdfService = {
       mediaHtml += '</ul>';
     }
 
+    const inspectorName = record['INSPECTOR'] || record['FISCALIZADOR'] || record['FUNCIONARIO'] || '';
     const html = '<!DOCTYPE html><html><head><meta charset="utf-8"></head>' +
       '<body style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#222;margin:24px;">' +
-      '<div style="border-bottom:3px solid #0b7bde;padding-bottom:10px;margin-bottom:16px;">' +
-      '<div style="font-size:18px;font-weight:bold;color:#0b7bde;">' + this._esc(APP_CONFIG.APP_NAME) + '</div>' +
-      '<div style="font-size:13px;color:#555;">' + this._esc(APP_CONFIG.SUBTITLE) + ' — ' + this._esc(schema.label) + '</div>' +
-      '<div style="font-size:11px;color:#777;margin-top:4px;">Generado: ' + nowStr + ' | ID: ' + this._esc(record.ID || '') + '</div>' +
-      '</div>' +
+      this._buildOfficialHeaderHtml(schema.label, 'Informe Oficial de Procedimiento', 'ID: ' + (record.ID || 'S/N') + ' · Emitido: ' + nowStr) +
       '<table style="width:100%;border-collapse:collapse;">' + rowsHtml + '</table>' +
       mediaHtml +
-      '<div style="margin-top:26px;font-size:10px;color:#888;text-align:center;border-top:1px solid #e0e0e0;padding-top:8px;">' +
+      this._buildOfficialSignatureBlockHtml(inspectorName, 'Inspector a Cargo del Procedimiento') +
+      '<div style="margin-top:20px;font-size:9.5px;color:#667085;text-align:center;border-top:1px solid #e0e0e0;padding-top:8px;">' +
+      this._esc(APP_CONFIG.MUNICIPALITY || 'Ilustre Municipalidad de Peñaflor') + ' · Responsable: ' +
+      this._esc(APP_CONFIG.DEPARTMENT_HEAD_NAME || 'David Hernández Salum') + ' (' + this._esc(APP_CONFIG.DEPARTMENT_HEAD_TITLE || 'Jefe de Inspectores Comerciales') + ') · ' +
       this._esc(APP_CONFIG.CREATOR) + ' | ' + this._esc(APP_CONFIG.CONTACT) +
       '</div></body></html>';
 
@@ -230,10 +318,7 @@ const PdfService = {
       'table.data th { background: #0c347d; color: #ffffff; padding: 6px 5px; text-align: left; border: 1px solid #0c347d; font-size: 9.5px; }' +
       '.footer { margin-top: 16px; font-size: 9.5px; color: #667085; text-align: center; border-top: 1px solid #e0e0e0; padding-top: 6px; }' +
       '</style></head><body>' +
-      '<div class="header">' +
-        '<div class="title">' + this._esc(APP_CONFIG.APP_NAME) + '</div>' +
-        '<div class="subtitle">' + this._esc(APP_CONFIG.SUBTITLE) + ' — <strong>REPORTE DIARIO INDIVIDUAL DE ASISTENCIA</strong></div>' +
-      '</div>' +
+      this._buildOfficialHeaderHtml('REPORTE DIARIO INDIVIDUAL DE ASISTENCIA', 'FERIA ' + cleanFeria, 'Fecha Jornada: ' + fechaDisplay + ' · Tope 17:00 hrs') +
       '<div class="meta"><table>' +
         '<tr>' +
           '<td><strong>Feria Libre:</strong> FERIA ' + this._esc(cleanFeria) + '</td>' +
@@ -246,7 +331,8 @@ const PdfService = {
           '<td><strong>Generado:</strong> ' + this._esc(nowStr) + '</td>' +
         '</tr>' +
         '<tr>' +
-          '<td colspan="3"><strong>Inspector(es) a Cargo:</strong> ' + this._esc(inspectores) + '</td>' +
+          '<td colspan="2"><strong>Inspector(es) a Cargo:</strong> ' + this._esc(inspectores) + '</td>' +
+          '<td><strong>Titular Depto.:</strong> ' + this._esc(APP_CONFIG.DEPARTMENT_HEAD_NAME || 'David Hernández Salum') + '</td>' +
         '</tr>' +
       '</table></div>' +
       '<table class="kpis"><tr>' +
@@ -269,8 +355,11 @@ const PdfService = {
         '<th style="text-align:center;width:64px;">HORA</th>' +
         '<th>INSPECTOR</th>' +
       '</tr></thead><tbody>' + tableRowsHtml + '</tbody></table>' +
+      this._buildOfficialSignatureBlockHtml(inspectores !== 'No especificado' ? inspectores : '', 'Inspector(es) a Cargo de Jornada') +
       '<div class="footer">' +
         'Documento oficial generado al cierre diario de asistencia (tope 17:00 hrs) — ' +
+        this._esc(APP_CONFIG.DEPARTMENT_HEAD_NAME || 'David Hernández Salum') + ', ' +
+        this._esc(APP_CONFIG.DEPARTMENT_HEAD_TITLE || 'Jefe de Inspectores Comerciales') + ' · ' +
         this._esc(APP_CONFIG.CREATOR) + ' | ' + this._esc(APP_CONFIG.CONTACT) +
       '</div></body></html>';
 
@@ -399,15 +488,16 @@ const PdfService = {
       '.two-col > tbody > tr > td { width: 50%; vertical-align: top; }' +
       '.footer { margin-top: 18px; font-size: 9.5px; color: #667085; text-align: center; border-top: 1px solid #e0e0e0; padding-top: 6px; }' +
       '</style></head><body>' +
-      '<div class="header">' +
-        '<div class="title">' + this._esc(APP_CONFIG.APP_NAME) + '</div>' +
-        '<div class="subtitle">' + this._esc(APP_CONFIG.SUBTITLE) + '</div>' +
-        '<div class="badge-yr">BALANCE ANUAL DE GESTIÓN Y FISCALIZACIÓN — AÑO ' + this._esc(yStr) + (isClosure ? ' (CIERRE ANUAL OFICIAL)' : ' (INFORME PARCIAL / BALANCE)') + '</div>' +
-      '</div>' +
+      this._buildOfficialHeaderHtml(
+        'BALANCE ANUAL DE GESTIÓN Y FISCALIZACIÓN — AÑO ' + yStr,
+        isClosure ? 'Cierre Anual Oficial' : 'Informe Estadístico Consolidado',
+        'AÑO DE GESTIÓN ' + yStr + (isClosure ? ' · CIERRE OFICIAL' : ' · BALANCE')
+      ) +
       '<div class="meta-box">' +
         '<strong>Año Evaluado:</strong> ' + this._esc(yStr) + ' &nbsp;|&nbsp; ' +
-        '<strong>Fecha de Emisión:</strong> ' + this._esc(nowStr) + ' &nbsp;|&nbsp; ' +
-        '<strong>Responsable:</strong> ' + this._esc(opts.userEmail || 'Departamento de Inspectores Comerciales') +
+        '<strong>Fecha de Emisión:</strong> ' + this._esc(nowStr) + '<br>' +
+        '<strong>Titular Responsable:</strong> ' + this._esc(APP_CONFIG.DEPARTMENT_HEAD_NAME || 'David Hernández Salum') + ' — ' + this._esc(APP_CONFIG.DEPARTMENT_HEAD_TITLE || 'Jefe de Inspectores Comerciales') +
+        (opts.userEmail ? (' &nbsp;|&nbsp; <strong>Emitido por:</strong> ' + this._esc(opts.userEmail)) : '') +
       '</div>' +
 
       '<div class="section-title">1. Resumen Ejecutivo Anual (Indicadores Globales)</div>' +
@@ -465,8 +555,11 @@ const PdfService = {
 
       archiveHtml +
 
+      this._buildOfficialSignatureBlockHtml('', '') +
+
       '<div class="footer">' +
-        'Balance Anual Oficial ' + this._esc(yStr) + ' — ' + this._esc(APP_CONFIG.APP_NAME) + ' — ' +
+        'Balance Anual Oficial ' + this._esc(yStr) + ' — ' + this._esc(APP_CONFIG.MUNICIPALITY || 'Ilustre Municipalidad de Peñaflor') + ' · ' +
+        this._esc(APP_CONFIG.DEPARTMENT_HEAD_NAME || 'David Hernández Salum') + ' (' + this._esc(APP_CONFIG.DEPARTMENT_HEAD_TITLE || 'Jefe de Inspectores Comerciales') + ') · ' +
         this._esc(APP_CONFIG.CREATOR) + ' | ' + this._esc(APP_CONFIG.CONTACT) +
       '</div></body></html>';
 
