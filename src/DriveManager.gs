@@ -41,6 +41,7 @@ const DriveManager = {
     const firmas = this.getOrCreateFolder(APP_CONFIG.DRIVE_SUBFOLDERS.FIRMAS, root);
     const pdfs = this.getOrCreateFolder(APP_CONFIG.DRIVE_SUBFOLDERS.DOCUMENTOS_PDF, root);
     const excel = this.getOrCreateFolder(APP_CONFIG.DRIVE_SUBFOLDERS.RESPALDOS_EXCEL, root);
+    const cierres = this.getOrCreateFolder(APP_CONFIG.DRIVE_SUBFOLDERS.CIERRES_ANUALES || 'CIERRES_ANUALES', root);
 
     // Crear carpetas independientes de PDF por cada Bot
     Object.keys(APP_CONFIG.PDF_BOTS).forEach(tableName => {
@@ -48,13 +49,16 @@ const DriveManager = {
     });
     // Carpeta de reportes PDF diarios individuales de Asistencia de Ferias Libres
     this.getOrCreateFolder(APP_CONFIG.FERIA_PDF_FOLDER_NAME || 'ASISTENCIA FERIAS LIBRES', pdfs);
+    // Carpeta de Balances Anuales PDF
+    this.getOrCreateFolder(APP_CONFIG.ANNUAL_PDF_FOLDER_NAME || 'BALANCES ANUALES', pdfs);
 
     return {
       root: { id: root.getId(), name: root.getName(), url: root.getUrl() },
       fotos: { id: fotos.getId(), name: fotos.getName(), url: fotos.getUrl() },
       firmas: { id: firmas.getId(), name: firmas.getName(), url: firmas.getUrl() },
       pdfs: { id: pdfs.getId(), name: pdfs.getName(), url: pdfs.getUrl() },
-      excel: { id: excel.getId(), name: excel.getName(), url: excel.getUrl() }
+      excel: { id: excel.getId(), name: excel.getName(), url: excel.getUrl() },
+      cierres: { id: cierres.getId(), name: cierres.getName(), url: cierres.getUrl() }
     };
   },
 
@@ -98,6 +102,24 @@ const DriveManager = {
   getExcelBackupFolder() {
     const root = this.getAppRootFolder();
     return this.getOrCreateFolder(APP_CONFIG.DRIVE_SUBFOLDERS.RESPALDOS_EXCEL, root);
+  },
+
+  /**
+   * Obtiene/crea la carpeta de archivo de un Cierre de Año:
+   * INSPECTOR_COMERCIAL_DRIVE / CIERRES_ANUALES / AÑO_<YYYY>
+   */
+  getAnnualCloseFolder(year) {
+    const root = this.getAppRootFolder();
+    const base = this.getOrCreateFolder(APP_CONFIG.DRIVE_SUBFOLDERS.CIERRES_ANUALES || 'CIERRES_ANUALES', root);
+    return this.getOrCreateFolder('AÑO_' + String(year || new Date().getFullYear()), base);
+  },
+
+  /**
+   * Obtiene/crea la carpeta de Balances Anuales PDF:
+   * INSPECTOR_COMERCIAL_DRIVE / DOCUMENTOS_PDF / BALANCES ANUALES
+   */
+  getAnnualPdfFolder() {
+    return this.getPdfFolder(APP_CONFIG.ANNUAL_PDF_FOLDER_NAME || 'BALANCES ANUALES');
   },
 
   /**

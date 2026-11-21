@@ -151,6 +151,7 @@ const App = {
       case 'map': this.renderMap(route.table || 'COMERCIO'); break;
       case 'dashboard': this.renderDashboard(); break;
       case 'backup': this.renderBackupPanel(); break;
+      case 'yearClose': this.renderYearCloseView(route.year); break;
       default: this.renderMenuTable('MENU');
     }
   },
@@ -275,7 +276,8 @@ const App = {
       { title: 'Mapa Fiscalizaciones', sub: 'Geolocalización GPS', icon: 'pin_drop', cls: 'ic-sky', route: { kind: 'map', table: 'COMERCIO', title: 'Mapa de Fiscalizaciones' } },
       { title: 'Estadísticas / Dashboard', sub: 'KPIs y gráficos', icon: 'monitoring', cls: 'ic-blue', route: { kind: 'dashboard', title: 'Estadísticas y Dashboard' } },
       { title: 'Documentos Drive', sub: 'Carpetas oficiales', icon: 'folder_open', cls: 'ic-green', route: { kind: 'links', table: 'DOCUMENTOS', title: 'Documentos Drive' } },
-      { title: 'Excel y Drive', sub: 'Respaldo .xlsx y API', icon: 'cloud_sync', cls: 'ic-teal', route: { kind: 'backup', title: 'Excel, Drive y Conexión en Vivo' } }
+      { title: 'Excel y Drive', sub: 'Respaldo .xlsx y API', icon: 'cloud_sync', cls: 'ic-teal', route: { kind: 'backup', title: 'Excel, Drive y Conexión en Vivo' } },
+      { title: 'Cierre de Año y Balance', sub: 'Archivar año + PDF', icon: 'event_available', cls: 'ic-indigo', route: { kind: 'yearClose', title: 'Cierre de Año y Balance Anual' } }
     ];
 
     let html = '<div class="gallery-grid">';
@@ -1588,7 +1590,13 @@ const App = {
       '<a class="menu-card" style="text-decoration:none;" href="' + this.esc(f.firmas ? f.firmas.url : '#') + '" target="_blank"><div class="card-icon"><span class="material-icons">draw</span></div><div class="card-title">FIRMAS Digitales</div></a>' +
       '<a class="menu-card" style="text-decoration:none;" href="' + this.esc(f.pdfs ? f.pdfs.url : '#') + '" target="_blank"><div class="card-icon"><span class="material-icons">picture_as_pdf</span></div><div class="card-title">DOCUMENTOS PDF (5 Bots)</div></a>' +
       '<a class="menu-card" style="text-decoration:none;" href="' + this.esc(f.excel ? f.excel.url : '#') + '" target="_blank"><div class="card-icon"><span class="material-icons">table_view</span></div><div class="card-title">RESPALDOS EXCEL (.xlsx)</div></a>' +
+      '<a class="menu-card" style="text-decoration:none;" href="' + this.esc(f.cierres ? f.cierres.url : '#') + '" target="_blank"><div class="card-icon"><span class="material-icons">inventory_2</span></div><div class="card-title">CIERRES ANUALES (Por Año)</div></a>' +
       '</div></div>' +
+      '<div class="card" style="border-left:5px solid #4f46e5;">' +
+      '<h3 style="margin-top:0;color:#312e81;">Cierre de Año y Balance Anual (PDF Estadístico)</h3>' +
+      '<p style="color:var(--muted);font-size:13px;">Genera el documento PDF con todas las estadísticas y balances del año, archiva los datos del año en Drive y reinicia las tablas operativas en cero para comenzar el nuevo año.</p>' +
+      '<button class="btn btn-primary" onclick="App.navigate({kind:\'yearClose\',title:\'Cierre de Año y Balance Anual\'})"><span class="material-icons">event_available</span> Abrir Cierre de Año y Balance Anual</button>' +
+      '</div>' +
       '<div class="card">' +
       '<h3 style="margin-top:0;">Respaldo Completo en Excel (.xlsx)</h3>' +
       '<p style="color:var(--muted);font-size:13px;">Exporta ambas planillas oficiales en formato Microsoft Excel (.xlsx) manteniendo el orden exacto de columnas y tipos numéricos para tus estadísticas.</p>' +
@@ -2795,6 +2803,211 @@ const App = {
       XLSX.writeFile(wb, 'ASISTENCIA_FERIA_' + st.feria.replace(/\s+/g, '_') + '_' + st.fecha + '.xlsx');
       this.toast('Excel de Asistencia (100 puestos) descargado.');
     }
+  },
+
+  // ==========================================================================
+  // CIERRE DE AÑO Y BALANCE ANUAL (ARCHIVO POR AÑO + PDF + INICIAR EN CERO)
+  // ==========================================================================
+  renderYearCloseView(yearParam) {
+    const curYear = new Date().getFullYear();
+    const selectedYear = Number(yearParam) || curYear;
+    this.showLoader('Calculando estadísticas y balance anual ' + selectedYear + '...');
+
+    google.script.run
+      .withSuccessHandler(stats => {
+        this.hideLoader();
+        if (!stats || stats.ok === false) {
+          this.toast('Error cargando balance anual: ' + ((stats && stats.error) || 'Respuesta inválida'));
+          return;
+        }
+        this._paintYearCloseView(stats, selectedYear);
+      })
+      .withFailureHandler(err => {
+        this.hideLoader();
+        this.toast('Error cargando balance anual: ' + ((err && err.message) || err));
+      })
+      .apiGetAnnualBalanceStats(selectedYear);
+  },
+
+  _paintYearCloseView(stats, selectedYear) {
+    const k = stats.kpis || {};
+    const curYear = new Date().getFullYear();
+    const years = [];
+    for (let y = curYear + 1; y >= Math.max(curYear - 3, 2024); y--) years.push(y);
+    const fmtNum = n => Number(n || 0).toLocaleString('es-CL');
+    const fmtMoney = n => '$' + Math.round(Number(n || 0)).toLocaleString('es-CL');
+
+    let yearOpts = '';
+    years.forEach(y => {
+      yearOpts += '<option value="' + y + '"' + (y === selectedYear ? ' selected' : '') + '>Año ' + y + '</option>';
+    });
+
+    let html = '<div class="section-header">' +
+      '<h2>Cierre de Año y Balance Anual — ' + selectedYear + '</h2>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">' +
+        '<select class="form-control" style="width:130px;" onchange="App.renderYearCloseView(Number(this.value))">' + yearOpts + '</select>' +
+        '<button class="btn btn-primary btn-sm" onclick="App.generateAnnualBalancePdf(' + selectedYear + ')"><span class="material-icons" style="font-size:16px;">picture_as_pdf</span> Crear PDF Balance Anual (Sin borrar)</button>' +
+        '<button class="btn btn-danger btn-sm" onclick="App.openYearCloseConfirmModal(' + selectedYear + ')"><span class="material-icons" style="font-size:16px;">lock_reset</span> Ejecutar Cierre de Año ' + selectedYear + '</button>' +
+      '</div></div>';
+
+    // Explicación clara de ambos procesos
+    html += '<div class="card" style="padding:14px 16px;margin-bottom:14px;border-left:5px solid #4f46e5;background:#f8f9ff;">' +
+      '<div style="font-weight:700;color:#312e81;margin-bottom:4px;">🗂️ Almacenamiento por Año de Trabajo + Balance PDF</div>' +
+      '<div style="font-size:12.5px;color:#344054;line-height:1.55;">' +
+      '• <strong>Crear PDF Balance Anual (Sin borrar):</strong> genera un informe PDF oficial con todas las estadísticas y fiscalizaciones del año ' + selectedYear + ' sin alterar los datos actuales.<br>' +
+      '• <strong>Ejecutar Cierre de Año ' + selectedYear + ':</strong> guarda primero los respaldos Excel (<code>.xlsx</code>) y copias Google Sheets del año en <code>CIERRES_ANUALES/AÑO_' + selectedYear + '</code>, crea el <strong>PDF Balance Anual</strong> y luego deja en cero las tablas operativas para iniciar el año siguiente limpio (<strong>conservando intactos</strong> el padrón de feriantes con sus QRs únicos, funcionarios y menús).' +
+      '</div></div>';
+
+    // KPIs Globales del Año
+    html += '<div class="kpi-grid">' +
+      '<div class="kpi-card"><div class="kpi-label">Total Procedimientos ' + selectedYear + '</div><div class="kpi-value">' + fmtNum(k.totalProcedimientos) + '</div></div>' +
+      '<div class="kpi-card" style="border-top-color:#0b7bde;"><div class="kpi-label">Fis. Comerciales</div><div class="kpi-value" style="color:#0b7bde;">' + fmtNum(k.totalComercio) + '</div></div>' +
+      '<div class="kpi-card" style="border-top-color:#4f46e5;"><div class="kpi-label">Fuera de Horario</div><div class="kpi-value" style="color:#4f46e5;">' + fmtNum(k.totalFueraHora) + '</div></div>' +
+      '<div class="kpi-card" style="border-top-color:#0891b2;"><div class="kpi-label">Publicidad / Gigant.</div><div class="kpi-value" style="color:#0891b2;">' + fmtNum(k.totalPublicidad) + '</div></div>' +
+      '<div class="kpi-card" style="border-top-color:#d97706;"><div class="kpi-label">Patentes en Mora</div><div class="kpi-value" style="color:#d97706;">' + fmtNum(k.totalMoraCount) + '</div></div>' +
+      '<div class="kpi-card" style="border-top-color:#c92a2a;"><div class="kpi-label">Monto Patentes Mora</div><div class="kpi-value" style="color:#c92a2a;font-size:18px;">' + fmtMoney(k.totalMoraMonto) + '</div></div>' +
+      '<div class="kpi-card" style="border-top-color:#12805c;"><div class="kpi-label">Reportes Jefatura</div><div class="kpi-value" style="color:#12805c;">' + fmtNum(k.totalReportes) + '</div></div>' +
+      '<div class="kpi-card" style="border-top-color:#be123c;"><div class="kpi-label">Notif. Deudas (Venc.)</div><div class="kpi-value" style="color:#be123c;">' + fmtNum(k.totalNotificaciones) + ' (' + fmtNum(k.totalVencidosNoPago) + ')</div></div>' +
+      '<div class="kpi-card" style="border-top-color:#0d9488;"><div class="kpi-label">Asistencias Ferias</div><div class="kpi-value" style="color:#0d9488;">' + fmtNum(k.totalAsistenciasFerias) + '</div></div>' +
+      '<div class="kpi-card" style="border-top-color:#16a34a;"><div class="kpi-label">Marcas QR Ferias</div><div class="kpi-value" style="color:#16a34a;">' + fmtNum(k.totalAsistenciasQr) + '</div></div>' +
+      '</div>';
+
+    // Evolución Mensual
+    const monthly = stats.monthly || [];
+    const maxM = Math.max.apply(null, monthly.map(m => m.total || 0).concat([1]));
+    html += '<div class="card" style="margin-bottom:14px;"><h3 style="margin-top:0;">Evolución Mensual — Año ' + selectedYear + '</h3>' +
+      '<div class="table-wrap"><table class="data-table"><thead><tr><th>MES</th><th>PROGRESO</th><th style="text-align:right;">PROCEDIMIENTOS</th></tr></thead><tbody>';
+    monthly.forEach(m => {
+      const pct = Math.max(Math.round(((m.total || 0) / maxM) * 100), m.total > 0 ? 3 : 0);
+      html += '<tr><td><strong>' + this.esc(m.label) + '</strong></td>' +
+        '<td style="width:55%;"><div style="background:#eef2f7;border-radius:6px;height:12px;overflow:hidden;"><div style="background:#0b7bde;height:12px;width:' + pct + '%;border-radius:6px;"></div></div></td>' +
+        '<td style="text-align:right;font-weight:700;">' + fmtNum(m.total) + '</td></tr>';
+    });
+    html += '</tbody></table></div></div>';
+
+    // Productividad por Inspector
+    const insps = stats.byInspector || [];
+    html += '<div class="card" style="margin-bottom:14px;"><h3 style="margin-top:0;">Balance por Inspector — Año ' + selectedYear + '</h3>' +
+      '<div class="table-wrap"><table class="data-table"><thead><tr><th>INSPECTOR</th><th>COMERCIO</th><th>FUERA HORA</th><th>PUBLICIDAD</th><th>REPORTES</th><th>FERIAS</th><th>TOTAL</th></tr></thead><tbody>';
+    if (insps.length === 0) {
+      html += '<tr><td colspan="7" style="text-align:center;color:var(--muted);">Sin registros de fiscalización en el año ' + selectedYear + '.</td></tr>';
+    } else {
+      insps.forEach(it => {
+        html += '<tr><td><strong>' + this.esc(it.inspector) + '</strong></td>' +
+          '<td>' + fmtNum(it.comercio) + '</td><td>' + fmtNum(it.fueraHora) + '</td><td>' + fmtNum(it.publicidad) + '</td>' +
+          '<td>' + fmtNum(it.reportes) + '</td><td>' + fmtNum(it.feriasAsist) + '</td>' +
+          '<td><strong>' + fmtNum(it.total) + '</strong></td></tr>';
+      });
+    }
+    html += '</tbody></table></div></div>';
+
+    // Balance Ferias Libres
+    const ferias = stats.feriasBreakdown || [];
+    html += '<div class="card" style="margin-bottom:14px;"><h3 style="margin-top:0;">Balance Ferias Libres — Año ' + selectedYear + '</h3>' +
+      '<div class="table-wrap"><table class="data-table"><thead><tr><th>FERIA</th><th>PADRÓN</th><th>ASISTEN</th><th>NO ASISTEN</th><th>POR QR</th><th>MANUAL</th></tr></thead><tbody>';
+    ferias.forEach(f => {
+      html += '<tr><td><strong>FERIA ' + this.esc(f.feria) + '</strong></td><td>' + fmtNum(f.padron) + '</td>' +
+        '<td style="color:var(--success);font-weight:700;">' + fmtNum(f.asisten) + '</td>' +
+        '<td style="color:var(--danger);font-weight:700;">' + fmtNum(f.noAsisten) + '</td>' +
+        '<td style="color:var(--accent);font-weight:700;">' + fmtNum(f.porQr) + '</td>' +
+        '<td>' + fmtNum(f.manual) + '</td></tr>';
+    });
+    html += '</tbody></table></div></div>';
+
+    // Historial de Cierres Anuales
+    const hist = stats.history || [];
+    html += '<div class="card"><h3 style="margin-top:0;">Historial de Cierres Anuales Archivados</h3>';
+    if (hist.length === 0) {
+      html += '<p style="color:var(--muted);font-size:13px;">Aún no se ha ejecutado ningún cierre de año. Al cerrar un año, aquí quedará el acceso permanente a su carpeta Drive, Excel histórico y Balance PDF.</p>';
+    } else {
+      html += '<div class="table-wrap"><table class="data-table"><thead><tr><th>AÑO</th><th>FECHA CIERRE</th><th>PROCEDIMIENTOS</th><th>ARCHIVOS DEL AÑO</th></tr></thead><tbody>';
+      hist.forEach(h => {
+        html += '<tr><td><span class="badge badge-blue" style="font-size:13px;">' + this.esc(h.year) + '</span></td>' +
+          '<td>' + this.esc(h.fechaCierre) + '<div style="font-size:11px;color:var(--muted);">' + this.esc(h.responsable) + '</div></td>' +
+          '<td><strong>' + fmtNum(h.totalProcedimientos) + '</strong><div style="font-size:11px;color:var(--muted);">Com: ' + fmtNum(h.comercio) + ' · FH: ' + fmtNum(h.fueraHora) + ' · Ferias: ' + fmtNum(h.asistenciasFerias) + '</div></td>' +
+          '<td style="white-space:nowrap;">' +
+            (h.pdfUrl ? '<a class="btn btn-primary btn-sm" href="' + this.esc(h.pdfUrl) + '" target="_blank">📄 Balance PDF</a> ' : '') +
+            (h.folderUrl ? '<a class="btn btn-outline btn-sm" href="' + this.esc(h.folderUrl) + '" target="_blank">📁 Carpeta Año</a>' : '') +
+          '</td></tr>';
+      });
+      html += '</tbody></table></div>';
+    }
+    html += '</div>';
+
+    document.getElementById('appView').innerHTML = html;
+  },
+
+  generateAnnualBalancePdf(year) {
+    this.showLoader('Generando documento PDF de Balance Anual ' + year + '...');
+    google.script.run
+      .withSuccessHandler(res => {
+        this.hideLoader();
+        if (!res || res.ok === false) {
+          this.toast('Error generando PDF anual: ' + ((res && res.error) || 'Respuesta inválida'));
+          return;
+        }
+        if (res.pdf && res.pdf.url) {
+          this.toast('✅ PDF Balance Anual ' + year + ' creado en Google Drive.');
+          window.open(res.pdf.url, '_blank');
+        } else {
+          this.toast('PDF generado correctamente.');
+        }
+      })
+      .withFailureHandler(err => {
+        this.hideLoader();
+        this.toast('Error generando PDF anual: ' + ((err && err.message) || err));
+      })
+      .apiGenerateAnnualBalancePdf(year);
+  },
+
+  openYearCloseConfirmModal(year) {
+    document.getElementById('modalTitle').textContent = 'Confirmar Cierre de Año ' + year;
+    document.getElementById('modalBody').innerHTML =
+      '<div style="background:#fff5f5;border:1px solid #fecaca;border-radius:10px;padding:12px 14px;margin-bottom:12px;color:#991b1b;font-size:13px;line-height:1.5;">' +
+        '<strong>⚠️ Atención: Este proceso archivará todo el año ' + year + ' y comenzará el siguiente en cero.</strong><br><br>' +
+        '1. Se exportarán respaldos Excel (<code>.xlsx</code>) y copias de Google Sheets a <code>CIERRES_ANUALES/AÑO_' + year + '</code>.<br>' +
+        '2. Se creará el <strong>PDF Oficial de Balance Anual ' + year + '</strong> con todas las estadísticas.<br>' +
+        '3. Se limpiarán en cero las tablas operativas (<code>COMERCIO</code>, <code>FUERA DE HORA</code>, <code>GIGANTOGRAFIA</code>, <code>PATENTES EN MORA</code>, <code>REPORTE</code>, <code>FERIAS NAVIDEÑAS</code>, <code>SEMANA PEÑAFLORINA</code>, <code>Hoja 1</code> y asistencias diarias <code>CONTROL_FERIA_*</code>).<br>' +
+        '4. <strong>Se conservan intactos:</strong> Padrón de feriantes (<code>ASISTENCIA</code> + códigos QR), <code>FUNCIONARIO</code>, menús e historial de cierres.' +
+      '</div>' +
+      '<div style="margin-bottom:12px;">' +
+        '<label style="font-weight:700;font-size:12.5px;display:block;margin-bottom:4px;">Para confirmar, escribe exactamente: <code>CERRAR ' + year + '</code></label>' +
+        '<input type="text" id="yearCloseConfirmInput" class="form-control" placeholder="CERRAR ' + year + '" autocomplete="off">' +
+      '</div>' +
+      '<div style="display:flex;gap:8px;justify-content:flex-end;">' +
+        '<button class="btn btn-outline btn-sm" onclick="App.closeModal()">Cancelar</button>' +
+        '<button class="btn btn-danger btn-sm" onclick="App.confirmExecuteYearClose(' + year + ')"><span class="material-icons" style="font-size:16px;">lock_reset</span> Archivar Año ' + year + ' y Reiniciar en 0</button>' +
+      '</div>';
+    document.getElementById('detailModal').classList.add('open');
+  },
+
+  confirmExecuteYearClose(year) {
+    const input = document.getElementById('yearCloseConfirmInput');
+    const code = (input ? input.value : '').trim().toUpperCase();
+    if (code !== ('CERRAR ' + year)) {
+      this.toast('Debes escribir exactamente: CERRAR ' + year);
+      return;
+    }
+    this.closeModal();
+    this.showLoader('Ejecutando Cierre de Año ' + year + ' (respaldando Excel, generando PDF Balance y reiniciando tablas)...');
+
+    google.script.run
+      .withSuccessHandler(res => {
+        this.hideLoader();
+        if (!res || res.ok === false) {
+          this.toast('Error en cierre de año: ' + ((res && res.error) || 'Respuesta inválida'));
+          return;
+        }
+        if (window.__clearInspectorLiveCache) window.__clearInspectorLiveCache();
+        this.toast('✅ Cierre de Año ' + year + ' completado. Archivos y PDF guardados en Drive.');
+        if (res.pdf && res.pdf.url) window.open(res.pdf.url, '_blank');
+        this.renderYearCloseView(year + 1);
+      })
+      .withFailureHandler(err => {
+        this.hideLoader();
+        this.toast('Error en cierre de año: ' + ((err && err.message) || err));
+      })
+      .apiExecuteYearClose(year, code);
   },
 
   // ==========================================================================

@@ -90,6 +90,18 @@ function _handleApiRequest(action, params) {
       case 'ensureFeriantesQr':
         result = DataService.ensureAllFeriantesQrCodes();
         break;
+      case 'annualStats':
+        result = DataService.getAnnualBalanceStats(params.year);
+        break;
+      case 'generateAnnualPdf':
+        result = DataService.generateAnnualBalancePdf(params.year);
+        break;
+      case 'executeYearClose':
+        result = DataService.executeYearClose(params.year, params.confirmCode);
+        break;
+      case 'listAnnualClosures':
+        result = DataService.listAnnualClosures();
+        break;
       default:
         result = { ok: false, error: 'Acción no reconocida: ' + action };
     }
@@ -130,6 +142,10 @@ function apiCloseFeriaAttendance(feria, fecha, tipoCierre) { return DataService.
 function apiListFeriaPdfs(feria, limit) { return DataService.listFeriaDailyPdfs(feria, limit); }
 function apiToggleFeriaCloseTrigger(enable) { return enable ? DataService.setupDailyFeriaCloseTrigger() : DataService.removeDailyFeriaCloseTrigger(); }
 function apiEnsureFeriantesQr() { return DataService.ensureAllFeriantesQrCodes(); }
+function apiGetAnnualBalanceStats(year) { return DataService.getAnnualBalanceStats(year); }
+function apiGenerateAnnualBalancePdf(year) { return DataService.generateAnnualBalancePdf(year); }
+function apiExecuteYearClose(year, confirmCode) { return DataService.executeYearClose(year, confirmCode); }
+function apiListAnnualClosures() { return DataService.listAnnualClosures(); }
 
 /**
  * Función global invocada por el Trigger diario de las 17:00 hrs Chile

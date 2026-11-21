@@ -300,6 +300,208 @@ const PdfService = {
     };
   },
 
+  /**
+   * Genera el Documento PDF Oficial de Balance Anual de Gestión y Fiscalización
+   * con todas las estadísticas consolidadas del año de trabajo.
+   */
+  generateAnnualBalancePdf(year, stats, options) {
+    const yStr = String(year || new Date().getFullYear());
+    const opts = options || {};
+    const isClosure = Boolean(opts.isClosure);
+    const nowStr = Utilities.formatDate(new Date(), APP_CONFIG.TIMEZONE, 'dd/MM/yyyy HH:mm:ss');
+    const stamp = Utilities.formatDate(new Date(), APP_CONFIG.TIMEZONE, 'yyyyMMdd_HHmm');
+    const fileName = 'BALANCE_ANUAL_INSPECTOR_COMERCIAL_' + yStr + (isClosure ? '_CIERRE' : '_' + stamp) + '.pdf';
+
+    const targetFolder = isClosure
+      ? DriveManager.getAnnualCloseFolder(yStr)
+      : DriveManager.getAnnualPdfFolder();
+
+    const k = stats.kpis || {};
+    const fmtNum = n => Number(n || 0).toLocaleString('es-CL');
+    const fmtMoney = n => '$' + Math.round(Number(n || 0)).toLocaleString('es-CL');
+
+    const renderBarRows = (items, colorHex, isMoney) => {
+      if (!items || items.length === 0) {
+        return '<tr><td colspan="3" style="border:1px solid #d7e2f0;padding:8px;text-align:center;color:#667085;">Sin datos registrados en este período.</td></tr>';
+      }
+      const maxVal = Math.max.apply(null, items.map(x => Number(x.value) || 0).concat([1]));
+      return items.map(it => {
+        const val = Number(it.value) || 0;
+        const pct = Math.max(Math.round((val / maxVal) * 100), val > 0 ? 4 : 0);
+        return '<tr>' +
+          '<td style="border:1px solid #d7e2f0;padding:5px 7px;width:36%;font-weight:bold;">' + this._esc(it.label) + '</td>' +
+          '<td style="border:1px solid #d7e2f0;padding:5px 7px;width:44%;">' +
+            '<div style="background:#eef2f7;border-radius:4px;height:12px;width:100%;overflow:hidden;">' +
+            '<div style="background:' + (colorHex || '#0b7bde') + ';height:12px;width:' + pct + '%;border-radius:4px;"></div>' +
+            '</div>' +
+          '</td>' +
+          '<td style="border:1px solid #d7e2f0;padding:5px 7px;width:20%;text-align:right;font-weight:bold;">' + this._esc(isMoney ? fmtMoney(val) : fmtNum(val)) + '</td>' +
+          '</tr>';
+      }).join('');
+    };
+
+    // Tabla mensual (Ene-Dic)
+    const monthlyRows = (stats.monthly || []).map(m => ({ label: m.label, value: m.total }));
+
+    // Tabla por inspector
+    const inspRows = (stats.byInspector || []).slice(0, 18).map(it =>
+      '<tr>' +
+        '<td style="border:1px solid #d7e2f0;padding:5px 7px;font-weight:bold;">' + this._esc(it.inspector) + '</td>' +
+        '<td style="border:1px solid #d7e2f0;padding:5px 7px;text-align:center;">' + fmtNum(it.comercio) + '</td>' +
+        '<td style="border:1px solid #d7e2f0;padding:5px 7px;text-align:center;">' + fmtNum(it.fueraHora) + '</td>' +
+        '<td style="border:1px solid #d7e2f0;padding:5px 7px;text-align:center;">' + fmtNum(it.publicidad) + '</td>' +
+        '<td style="border:1px solid #d7e2f0;padding:5px 7px;text-align:center;">' + fmtNum(it.reportes) + '</td>' +
+        '<td style="border:1px solid #d7e2f0;padding:5px 7px;text-align:center;">' + fmtNum(it.feriasAsist) + '</td>' +
+        '<td style="border:1px solid #d7e2f0;padding:5px 7px;text-align:center;font-weight:bold;color:#0c347d;background:#f4f7fb;">' + fmtNum(it.total) + '</td>' +
+      '</tr>'
+    ).join('') || '<tr><td colspan="7" style="border:1px solid #d7e2f0;padding:8px;text-align:center;color:#667085;">Sin registros por inspector.</td></tr>';
+
+    // Tabla ferias libres
+    const feriasRows = (stats.feriasBreakdown || []).map(f => {
+      const totalMarcas = (f.asisten || 0) + (f.noAsisten || 0);
+      const pctAsist = totalMarcas > 0 ? Math.round((f.asisten / totalMarcas) * 100) + '%' : '-';
+      return '<tr>' +
+        '<td style="border:1px solid #d7e2f0;padding:5px 7px;font-weight:bold;color:#0c347d;">FERIA ' + this._esc(f.feria) + '</td>' +
+        '<td style="border:1px solid #d7e2f0;padding:5px 7px;text-align:center;">' + fmtNum(f.padron) + '</td>' +
+        '<td style="border:1px solid #d7e2f0;padding:5px 7px;text-align:center;color:#12805c;font-weight:bold;">' + fmtNum(f.asisten) + '</td>' +
+        '<td style="border:1px solid #d7e2f0;padding:5px 7px;text-align:center;color:#c92a2a;font-weight:bold;">' + fmtNum(f.noAsisten) + '</td>' +
+        '<td style="border:1px solid #d7e2f0;padding:5px 7px;text-align:center;color:#0b7bde;">' + fmtNum(f.porQr) + '</td>' +
+        '<td style="border:1px solid #d7e2f0;padding:5px 7px;text-align:center;">' + fmtNum(f.manual) + '</td>' +
+        '<td style="border:1px solid #d7e2f0;padding:5px 7px;text-align:center;font-weight:bold;">' + pctAsist + '</td>' +
+      '</tr>';
+    }).join('') || '<tr><td colspan="7" style="border:1px solid #d7e2f0;padding:8px;text-align:center;color:#667085;">Sin asistencias registradas en ferias.</td></tr>';
+
+    let archiveHtml = '';
+    if (isClosure && opts.excelFiles && opts.excelFiles.length > 0) {
+      archiveHtml = '<div class="section-title">Respaldos Históricos Archivados — Año ' + this._esc(yStr) + '</div>' +
+        '<div class="meta-box"><ul style="margin:4px 0;padding-left:18px;">' +
+        opts.excelFiles.map(ef => '<li><strong>' + this._esc(ef.name || ef.key) + '</strong>' + (ef.sizeKb ? (' (' + ef.sizeKb + ' KB)') : '') + '</li>').join('') +
+        '</ul>' +
+        '<div style="font-size:10px;color:#475467;margin-top:4px;">Carpeta Drive del año: INSPECTOR_COMERCIAL_DRIVE / CIERRES_ANUALES / AÑO_' + this._esc(yStr) + '</div></div>';
+    }
+
+    const html = '<!DOCTYPE html><html><head><meta charset="utf-8"><style>' +
+      '@page { size: letter portrait; margin: 14mm; }' +
+      'body { font-family: Arial, Helvetica, sans-serif; font-size: 10.5px; color: #1d2939; margin: 0; }' +
+      '.header { border-bottom: 3px solid #0c347d; padding-bottom: 8px; margin-bottom: 12px; }' +
+      '.title { font-size: 17px; font-weight: bold; color: #0c347d; }' +
+      '.subtitle { font-size: 12px; color: #475467; margin-top: 2px; }' +
+      '.badge-yr { display:inline-block; background:#0c347d; color:#fff; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:bold; margin-top:5px; }' +
+      '.meta-box { background:#f4f7fb; border:1px solid #d7e2f0; border-radius:6px; padding:8px 10px; margin-bottom:12px; }' +
+      '.section-title { font-size: 12.5px; font-weight: bold; color: #0c347d; border-bottom: 2px solid #0b7bde; padding-bottom: 3px; margin: 14px 0 8px 0; page-break-after: avoid; }' +
+      '.kpi-tbl { width: 100%; border-collapse: separate; border-spacing: 5px; margin: 0 -5px 8px -5px; }' +
+      '.kpi-cell { border: 1px solid #d7e2f0; border-top: 3px solid #0c347d; border-radius: 6px; padding: 7px 6px; text-align: center; background: #fff; width: 25%; }' +
+      '.kpi-lbl { font-size: 8.5px; color: #667085; text-transform: uppercase; font-weight: bold; }' +
+      '.kpi-val { font-size: 15px; font-weight: bold; margin-top: 2px; color: #0c347d; }' +
+      'table.data { width: 100%; border-collapse: collapse; font-size: 9.8px; margin-bottom: 10px; }' +
+      'table.data th { background: #0c347d; color: #fff; padding: 6px 5px; border: 1px solid #0c347d; font-size: 9.3px; }' +
+      '.two-col { width: 100%; border-collapse: separate; border-spacing: 8px 0; margin: 0 -8px; }' +
+      '.two-col > tbody > tr > td { width: 50%; vertical-align: top; }' +
+      '.footer { margin-top: 18px; font-size: 9.5px; color: #667085; text-align: center; border-top: 1px solid #e0e0e0; padding-top: 6px; }' +
+      '</style></head><body>' +
+      '<div class="header">' +
+        '<div class="title">' + this._esc(APP_CONFIG.APP_NAME) + '</div>' +
+        '<div class="subtitle">' + this._esc(APP_CONFIG.SUBTITLE) + '</div>' +
+        '<div class="badge-yr">BALANCE ANUAL DE GESTIÓN Y FISCALIZACIÓN — AÑO ' + this._esc(yStr) + (isClosure ? ' (CIERRE ANUAL OFICIAL)' : ' (INFORME PARCIAL / BALANCE)') + '</div>' +
+      '</div>' +
+      '<div class="meta-box">' +
+        '<strong>Año Evaluado:</strong> ' + this._esc(yStr) + ' &nbsp;|&nbsp; ' +
+        '<strong>Fecha de Emisión:</strong> ' + this._esc(nowStr) + ' &nbsp;|&nbsp; ' +
+        '<strong>Responsable:</strong> ' + this._esc(opts.userEmail || 'Departamento de Inspectores Comerciales') +
+      '</div>' +
+
+      '<div class="section-title">1. Resumen Ejecutivo Anual (Indicadores Globales)</div>' +
+      '<table class="kpi-tbl">' +
+        '<tr>' +
+          '<td class="kpi-cell" style="border-top-color:#0c347d;"><div class="kpi-lbl">Total Procedimientos</div><div class="kpi-val">' + fmtNum(k.totalProcedimientos) + '</div></td>' +
+          '<td class="kpi-cell" style="border-top-color:#0b7bde;"><div class="kpi-lbl">Fis. Comerciales</div><div class="kpi-val" style="color:#0b7bde;">' + fmtNum(k.totalComercio) + '</div></td>' +
+          '<td class="kpi-cell" style="border-top-color:#4f46e5;"><div class="kpi-lbl">Fuera de Horario</div><div class="kpi-val" style="color:#4f46e5;">' + fmtNum(k.totalFueraHora) + '</div></td>' +
+          '<td class="kpi-cell" style="border-top-color:#0891b2;"><div class="kpi-lbl">Publicidad / Gigant.</div><div class="kpi-val" style="color:#0891b2;">' + fmtNum(k.totalPublicidad) + '</div></td>' +
+        '</tr>' +
+        '<tr>' +
+          '<td class="kpi-cell" style="border-top-color:#d97706;"><div class="kpi-lbl">Patentes en Mora</div><div class="kpi-val" style="color:#d97706;">' + fmtNum(k.totalMoraCount) + '</div></td>' +
+          '<td class="kpi-cell" style="border-top-color:#c92a2a;"><div class="kpi-lbl">Monto Patentes Mora</div><div class="kpi-val" style="color:#c92a2a;font-size:13px;">' + fmtMoney(k.totalMoraMonto) + '</div></td>' +
+          '<td class="kpi-cell" style="border-top-color:#12805c;"><div class="kpi-lbl">Reportes Jefatura</div><div class="kpi-val" style="color:#12805c;">' + fmtNum(k.totalReportes) + '</div></td>' +
+          '<td class="kpi-cell" style="border-top-color:#be123c;"><div class="kpi-lbl">Notif. Deudas (Venc.)</div><div class="kpi-val" style="color:#be123c;">' + fmtNum(k.totalNotificaciones) + ' (' + fmtNum(k.totalVencidosNoPago) + ')</div></td>' +
+        '</tr>' +
+        '<tr>' +
+          '<td class="kpi-cell" style="border-top-color:#0d9488;"><div class="kpi-lbl">Asistencias Ferias</div><div class="kpi-val" style="color:#0d9488;">' + fmtNum(k.totalAsistenciasFerias) + '</div></td>' +
+          '<td class="kpi-cell" style="border-top-color:#16a34a;"><div class="kpi-lbl">Marcas por QR</div><div class="kpi-val" style="color:#16a34a;">' + fmtNum(k.totalAsistenciasQr) + '</div></td>' +
+          '<td class="kpi-cell" style="border-top-color:#9333ea;"><div class="kpi-lbl">Semana Peñaflorina</div><div class="kpi-val" style="color:#9333ea;">' + fmtNum(k.totalSemanaPenaflorina) + '</div></td>' +
+          '<td class="kpi-cell" style="border-top-color:#dc2626;"><div class="kpi-lbl">Ferias Navideñas</div><div class="kpi-val" style="color:#dc2626;">' + fmtNum(k.totalFeriasNavidenas) + '</div></td>' +
+        '</tr>' +
+      '</table>' +
+
+      '<div class="section-title">2. Evolución Mensual de Procedimientos — Año ' + this._esc(yStr) + '</div>' +
+      '<table class="data"><thead><tr><th>MES</th><th>DISTRIBUCIÓN</th><th style="text-align:right;">PROCEDIMIENTOS</th></tr></thead><tbody>' +
+      renderBarRows(monthlyRows, '#0b7bde', false) +
+      '</tbody></table>' +
+
+      '<div class="section-title">3. Productividad y Fiscalizaciones por Inspector</div>' +
+      '<table class="data"><thead><tr>' +
+        '<th style="text-align:left;">INSPECTOR</th><th>COMERCIO</th><th>FUERA HORA</th><th>PUBLICIDAD</th><th>REPORTES</th><th>FERIAS</th><th>TOTAL</th>' +
+      '</tr></thead><tbody>' + inspRows + '</tbody></table>' +
+
+      '<div class="section-title">4. Situación de Patentes, Permisos y Notificaciones de Deudas</div>' +
+      '<table class="two-col"><tbody><tr>' +
+        '<td>' +
+          '<div style="font-weight:bold;margin-bottom:4px;color:#0c347d;">Comercio — Cuenta con Patente</div>' +
+          '<table class="data"><tbody>' + renderBarRows(stats.commercePatente, '#0c347d', false) + '</tbody></table>' +
+          '<div style="font-weight:bold;margin-bottom:4px;color:#0c347d;">Comercio — Permiso al Día</div>' +
+          '<table class="data"><tbody>' + renderBarRows(stats.commercePermiso, '#12805c', false) + '</tbody></table>' +
+        '</td>' +
+        '<td>' +
+          '<div style="font-weight:bold;margin-bottom:4px;color:#0c347d;">Patentes en Mora — Monto ($) por Estado</div>' +
+          '<table class="data"><tbody>' + renderBarRows(stats.moraByEstado, '#d97706', true) + '</tbody></table>' +
+          '<div style="font-weight:bold;margin-bottom:4px;color:#0c347d;">Notificaciones por Deudas</div>' +
+          '<table class="data"><tbody>' + renderBarRows(stats.deudasEstado, '#be123c', false) + '</tbody></table>' +
+        '</td>' +
+      '</tr></tbody></table>' +
+
+      '<div class="section-title">5. Balance de Control de Asistencia — Ferias Libres</div>' +
+      '<table class="data"><thead><tr>' +
+        '<th style="text-align:left;">FERIA</th><th>PADRÓN</th><th>ASISTEN</th><th>NO ASISTEN</th><th>POR QR</th><th>MANUAL</th><th>% ASIST.</th>' +
+      '</tr></thead><tbody>' + feriasRows + '</tbody></table>' +
+
+      archiveHtml +
+
+      '<div class="footer">' +
+        'Balance Anual Oficial ' + this._esc(yStr) + ' — ' + this._esc(APP_CONFIG.APP_NAME) + ' — ' +
+        this._esc(APP_CONFIG.CREATOR) + ' | ' + this._esc(APP_CONFIG.CONTACT) +
+      '</div></body></html>';
+
+    const blob = Utilities.newBlob(html, MimeType.HTML, fileName + '.html')
+      .getAs(MimeType.PDF)
+      .setName(fileName);
+    const pdfFile = targetFolder.createFile(blob);
+
+    // Si es cierre anual, guardar también una copia en DOCUMENTOS_PDF / BALANCES ANUALES
+    if (isClosure) {
+      try {
+        const annualPdfDir = DriveManager.getAnnualPdfFolder();
+        pdfFile.makeCopy(fileName, annualPdfDir);
+      } catch (e) {}
+    }
+
+    try {
+      pdfFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    } catch (e) {
+      try {
+        pdfFile.setSharing(DriveApp.Access.DOMAIN_WITH_LINK, DriveApp.Permission.VIEW);
+      } catch (e2) {}
+    }
+
+    return {
+      id: pdfFile.getId(),
+      name: pdfFile.getName(),
+      url: pdfFile.getUrl(),
+      downloadUrl: 'https://drive.google.com/uc?export=download&id=' + pdfFile.getId(),
+      folderUrl: targetFolder.getUrl(),
+      year: yStr,
+      generatedAt: nowStr
+    };
+  },
+
   _esc(str) {
     return String(str || '')
       .replace(/&/g, '&amp;')

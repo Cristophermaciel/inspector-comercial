@@ -56,8 +56,22 @@ const APP_CONFIG = {
     FOTOS: 'FOTOS',
     FIRMAS: 'FIRMAS',
     DOCUMENTOS_PDF: 'DOCUMENTOS_PDF',
-    RESPALDOS_EXCEL: 'RESPALDOS_EXCEL'
+    RESPALDOS_EXCEL: 'RESPALDOS_EXCEL',
+    CIERRES_ANUALES: 'CIERRES_ANUALES'
   },
+  ANNUAL_PDF_FOLDER_NAME: 'BALANCES ANUALES',
+  // Tablas operativas que se archivan y se reinician en cero al ejecutar Cierre de Año
+  // (Se conservan intactos: ASISTENCIA / padrón feriantes + QRs, FUNCIONARIO y menús)
+  ANNUAL_RESET_TABLES: [
+    'COMERCIO',
+    'FUERA DE HORA',
+    'GIGANTOGRAFIA',
+    'PATENTES EN MORA',
+    'REPORTE',
+    'FERIAS NAVIDEÑAS',
+    'SEMANA PEÑAFLORINA',
+    'Hoja 1'
+  ],
 
   // Control de acceso (lista original de AppSheet)
   // Cambiar REQUIRE_AUTH_LIST a true si se despliega en dominio Google Workspace

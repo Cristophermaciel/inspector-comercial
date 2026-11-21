@@ -1254,5 +1254,414 @@ const DataService = {
     } catch (e) {
       return false;
     }
+  },
+
+  // ==========================================================================
+  // CIERRE DE AÑO Y BALANCE ANUAL (ARCHIVO POR AÑO + PDF ESTADÍSTICO + RESET)
+  // ==========================================================================
+  _extractYearMonth(val) {
+    if (!val) return null;
+    if (val instanceof Date && !isNaN(val.getTime())) {
+      return {
+        year: parseInt(Utilities.formatDate(val, APP_CONFIG.TIMEZONE, 'yyyy'), 10),
+        month: parseInt(Utilities.formatDate(val, APP_CONFIG.TIMEZONE, 'M'), 10)
+      };
+    }
+    const s = String(val).replace(/^'/, '').trim();
+    const ymd = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+    if (ymd) return { year: parseInt(ymd[1], 10), month: parseInt(ymd[2], 10) };
+    const dmy = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    if (dmy) return { year: parseInt(dmy[3], 10), month: parseInt(dmy[2], 10) };
+    return null;
+  },
+
+  _getOrCreateAnnualClosuresSheet() {
+    const ss = this._getSpreadsheet('MAIN');
+    const sheetName = 'CIERRES_ANUALES';
+    const headers = [
+      'ID_CIERRE', 'ANIO', 'FECHA_CIERRE', 'RESPONSABLE', 'TIPO_CIERRE',
+      'TOTAL_PROCEDIMIENTOS', 'COMERCIO', 'FUERA_HORA', 'PUBLICIDAD',
+      'PATENTES_MORA', 'MONTO_MORA', 'REPORTES', 'NOTIFICACIONES',
+      'ASISTENCIAS_FERIAS', 'CARPETA_ANIO_URL', 'EXCEL_MAIN_URL',
+      'EXCEL_DEUDAS_URL', 'PDF_NOMBRE', 'PDF_URL', 'PDF_ID'
+    ];
+    let sheet = ss.getSheetByName(sheetName);
+    if (!sheet) {
+      sheet = ss.insertSheet(sheetName);
+      sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+      sheet.setFrozenRows(1);
+    }
+    return { sheet, headers, sheetName, ssTz: ss.getSpreadsheetTimeZone() };
+  },
+
+  listAnnualClosures() {
+    const { sheet, headers } = this._getOrCreateAnnualClosuresSheet();
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) return [];
+    const values = sheet.getRange(2, 1, lastRow - 1, Math.min(sheet.getLastColumn(), headers.length)).getValues();
+    const list = [];
+    values.forEach(r => {
+      if (!r[1]) return;
+      list.push({
+        idCierre: String(r[0] || ''),
+        year: String(r[1] || ''),
+        fechaCierre: r[2] instanceof Date ? Utilities.formatDate(r[2], APP_CONFIG.TIMEZONE, 'dd/MM/yyyy HH:mm') : String(r[2] || ''),
+        responsable: String(r[3] || ''),
+        tipoCierre: String(r[4] || ''),
+        totalProcedimientos: Number(r[5]) || 0,
+        comercio: Number(r[6]) || 0,
+        fueraHora: Number(r[7]) || 0,
+        publicidad: Number(r[8]) || 0,
+        patentesMora: Number(r[9]) || 0,
+        montoMora: Number(r[10]) || 0,
+        reportes: Number(r[11]) || 0,
+        notificaciones: Number(r[12]) || 0,
+        asistenciasFerias: Number(r[13]) || 0,
+        folderUrl: String(r[14] || ''),
+        excelMainUrl: String(r[15] || ''),
+        excelDeudasUrl: String(r[16] || ''),
+        pdfName: String(r[17] || ''),
+        pdfUrl: String(r[18] || ''),
+        pdfId: String(r[19] || ''),
+        downloadPdfUrl: r[19] ? ('https://drive.google.com/uc?export=download&id=' + r[19]) : String(r[18] || '')
+      });
+    });
+    list.sort((a, b) => String(b.year).localeCompare(String(a.year)) || String(b.fechaCierre).localeCompare(String(a.fechaCierre)));
+    return list;
+  },
+
+  getAnnualBalanceStats(yearParam) {
+    const chile = this._getChileNowParts();
+    const currentYear = parseInt(chile.ymd.substring(0, 4), 10);
+    const targetYear = Number(yearParam) || currentYear;
+
+    const filterByYear = (rows, dateCols) => {
+      return (rows || []).filter(r => {
+        let ym = null;
+        for (let i = 0; i < dateCols.length; i++) {
+          ym = this._extractYearMonth(r[dateCols[i]]);
+          if (ym) break;
+        }
+        // Si el registro tiene fecha, filtrar por año; si no tiene fecha, incluirlo en el año en curso
+        if (!ym) return targetYear === currentYear;
+        return ym.year === targetYear;
+      });
+    };
+
+    const comercio = filterByYear(this._safeReadRows('COMERCIO'), ['FECHA HORA', 'FECHA']);
+    const fueraHora = filterByYear(this._safeReadRows('FUERA DE HORA'), ['FECHA HORA', 'FECHA']);
+    const publicidad = filterByYear(this._safeReadRows('GIGANTOGRAFIA'), ['FECHA HORA', 'FECHA']);
+    const mora = filterByYear(this._safeReadRows('PATENTES EN MORA'), ['FECHA FISCALIZACION', 'FECHA HORA', 'FECHA']);
+    const reportes = filterByYear(this._safeReadRows('REPORTE'), ['FECHA HORA', 'FECHA']);
+    const feriasNavidenas = filterByYear(this._safeReadRows('FERIAS NAVIDEÑAS'), ['FECHA HORA', 'FECHA']);
+    const semanaPenaflorina = filterByYear(this._safeReadRows('SEMANA PEÑAFLORINA'), ['FECHA HORA', 'FECHA']);
+    const notificaciones = filterByYear(this._safeReadRows('Hoja 1'), ['FECHA DE NOTIFICACION', 'FECHA DE TERMINO', 'FECHA']);
+    const padronFeriantes = this._safeReadRows('ASISTENCIA');
+
+    // Leer asistencias de todas las hojas CONTROL_FERIA_*
+    const ss = this._getSpreadsheet('MAIN');
+    const ssTz = ss.getSpreadsheetTimeZone();
+    const feriaStatsMap = {};
+    (APP_CONFIG.FERIAS_LIST || []).forEach(f => {
+      const nf = this._normalizeFeriaName(f);
+      feriaStatsMap[nf] = { feria: nf, padron: 0, asisten: 0, noAsisten: 0, porQr: 0, manual: 0 };
+    });
+    padronFeriantes.forEach(r => {
+      const nf = this._normalizeFeriaName(r['FERIA']);
+      if (!nf || nf === 'GENERAL') return;
+      if (!feriaStatsMap[nf]) feriaStatsMap[nf] = { feria: nf, padron: 0, asisten: 0, noAsisten: 0, porQr: 0, manual: 0 };
+      feriaStatsMap[nf].padron++;
+    });
+
+    const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    const monthlyCounts = new Array(12).fill(0);
+    const addMonth = (val) => {
+      const ym = this._extractYearMonth(val);
+      if (ym && ym.year === targetYear && ym.month >= 1 && ym.month <= 12) {
+        monthlyCounts[ym.month - 1]++;
+      }
+    };
+
+    const inspMap = {};
+    const addInsp = (name, field) => {
+      const k = String(name || '').trim();
+      if (!k) return;
+      if (!inspMap[k]) inspMap[k] = { inspector: k, comercio: 0, fueraHora: 0, publicidad: 0, reportes: 0, feriasAsist: 0, total: 0 };
+      inspMap[k][field]++;
+      inspMap[k].total++;
+    };
+
+    comercio.forEach(r => { addMonth(r['FECHA HORA'] || r['FECHA']); addInsp(r['INSPECTOR'], 'comercio'); });
+    fueraHora.forEach(r => { addMonth(r['FECHA HORA'] || r['FECHA']); addInsp(r['INSPECTOR'], 'fueraHora'); });
+    publicidad.forEach(r => { addMonth(r['FECHA HORA'] || r['FECHA']); addInsp(r['INSPECTOR'], 'publicidad'); });
+    mora.forEach(r => { addMonth(r['FECHA FISCALIZACION'] || r['FECHA HORA']); });
+    reportes.forEach(r => { addMonth(r['FECHA HORA'] || r['FECHA']); addInsp(r['FUNCIONARIO'] || r['INSPECTOR'], 'reportes'); });
+    feriasNavidenas.forEach(r => { addMonth(r['FECHA HORA'] || r['FECHA']); });
+    semanaPenaflorina.forEach(r => { addMonth(r['FECHA HORA'] || r['FECHA']); });
+    notificaciones.forEach(r => { addMonth(r['FECHA DE NOTIFICACION'] || r['FECHA DE TERMINO']); });
+
+    let totalAsistenciasFerias = 0, totalAsistenciasAsiste = 0, totalAsistenciasNoAsiste = 0, totalAsistenciasQr = 0, totalAsistenciasManual = 0;
+    ss.getSheets().forEach(sh => {
+      const shName = sh.getName();
+      if (shName.indexOf('CONTROL_FERIA_') !== 0) return;
+      const lr = sh.getLastRow();
+      if (lr < 2) return;
+      const lc = Math.min(sh.getLastColumn(), 17);
+      const vals = sh.getRange(2, 1, lr - 1, lc).getValues();
+      vals.forEach(row => {
+        const fStr = this._formatSheetDateYmd(row[1], ssTz);
+        const ym = this._extractYearMonth(fStr);
+        if (ym && ym.year !== targetYear) return;
+        const nf = this._normalizeFeriaName(row[3] || shName.replace(/^CONTROL_FERIA_/, '').replace(/_/g, ' '));
+        if (!feriaStatsMap[nf]) feriaStatsMap[nf] = { feria: nf, padron: 0, asisten: 0, noAsisten: 0, porQr: 0, manual: 0 };
+        const est = String(row[11] || '').toUpperCase().trim();
+        const med = String(row[12] || '').toUpperCase().trim();
+        totalAsistenciasFerias++;
+        if (est === 'ASISTE') { totalAsistenciasAsiste++; feriaStatsMap[nf].asisten++; }
+        else if (est === 'NO ASISTE') { totalAsistenciasNoAsiste++; feriaStatsMap[nf].noAsisten++; }
+        if (med === 'QR') { totalAsistenciasQr++; feriaStatsMap[nf].porQr++; }
+        else { totalAsistenciasManual++; feriaStatsMap[nf].manual++; }
+        addMonth(fStr);
+        addInsp(row[13], 'feriasAsist');
+      });
+    });
+
+    const countBy = (arr, col) => {
+      const m = {};
+      arr.forEach(r => {
+        const k = String(r[col] || 'Sin especificar').trim() || 'Sin especificar';
+        m[k] = (m[k] || 0) + 1;
+      });
+      return Object.keys(m).map(k => ({ label: k, value: m[k] })).sort((a, b) => b.value - a.value);
+    };
+
+    let totalMoraMonto = 0, totalAlDiaMonto = 0;
+    const moraPorEstado = {};
+    mora.forEach(r => {
+      const est = String(r['ESTADO PATENTE'] || 'Sin estado').trim().toUpperCase() || 'SIN ESTADO';
+      const val = this._parseMoney(r['VALOR PATENTE']);
+      moraPorEstado[est] = (moraPorEstado[est] || 0) + val;
+      if (est === 'EN MORA') totalMoraMonto += val;
+      if (est === 'AL DIA') totalAlDiaMonto += val;
+    });
+
+    let totalVencidosNoPago = 0, totalVencenHoy = 0, totalNotifVigentes = 0;
+    notificaciones.forEach(r => {
+      const raw = r['DIAS RESTANTES'];
+      if (raw === '' || raw === null || raw === undefined) return;
+      const n = Number(raw);
+      if (isNaN(n)) return;
+      if (n < 0) totalVencidosNoPago++;
+      else if (n === 0) totalVencenHoy++;
+      else totalNotifVigentes++;
+    });
+
+    const totalProcedimientos = comercio.length + fueraHora.length + publicidad.length +
+      mora.length + reportes.length + feriasNavidenas.length + semanaPenaflorina.length +
+      notificaciones.length + totalAsistenciasFerias;
+
+    return {
+      ok: true,
+      year: targetYear,
+      generatedAt: chile.stampStr,
+      kpis: {
+        totalProcedimientos,
+        totalComercio: comercio.length,
+        totalFueraHora: fueraHora.length,
+        totalPublicidad: publicidad.length,
+        totalMoraCount: mora.length,
+        totalMoraMonto: Math.round(totalMoraMonto),
+        totalAlDiaMonto: Math.round(totalAlDiaMonto),
+        totalReportes: reportes.length,
+        totalFeriasNavidenas: feriasNavidenas.length,
+        totalSemanaPenaflorina: semanaPenaflorina.length,
+        totalNotificaciones: notificaciones.length,
+        totalVencidosNoPago,
+        totalVencenHoy,
+        totalNotifVigentes,
+        totalAsistenciasFerias,
+        totalAsistenciasAsiste,
+        totalAsistenciasNoAsiste,
+        totalAsistenciasQr,
+        totalAsistenciasManual,
+        totalPadronFeriantes: padronFeriantes.length
+      },
+      monthly: monthNames.map((label, idx) => ({ month: idx + 1, label, total: monthlyCounts[idx] })),
+      byInspector: Object.keys(inspMap).map(k => inspMap[k]).sort((a, b) => b.total - a.total),
+      commercePatente: countBy(comercio, 'CUENTA CON PATENTE'),
+      commercePermiso: countBy(comercio, 'PERMISO AL DIA'),
+      moraByEstado: Object.keys(moraPorEstado).map(k => ({ label: k, value: Math.round(moraPorEstado[k]) })).sort((a, b) => b.value - a.value),
+      deudasEstado: [
+        { label: 'Vencidos por No Pago', value: totalVencidosNoPago },
+        { label: 'Vencen Hoy', value: totalVencenHoy },
+        { label: 'En Plazo / Vigentes', value: totalNotifVigentes }
+      ],
+      feriasBreakdown: Object.keys(feriaStatsMap).map(k => feriaStatsMap[k]).sort((a, b) => (b.asisten + b.padron) - (a.asisten + a.padron)),
+      history: this.listAnnualClosures()
+    };
+  },
+
+  /**
+   * Genera el documento PDF de Balance Anual SIN borrar datos (para consultas o reportes parciales).
+   */
+  generateAnnualBalancePdf(yearParam) {
+    const stats = this.getAnnualBalanceStats(yearParam);
+    const user = this.getCurrentUser();
+    const pdf = PdfService.generateAnnualBalancePdf(stats.year, stats, {
+      isClosure: false,
+      userEmail: user.email
+    });
+    return { ok: true, year: stats.year, pdf, stats };
+  },
+
+  /**
+   * Ejecuta el Cierre de Año completo:
+   * 1. Exporta respaldos Excel (.xlsx) y copias históricas de Google Sheets en CIERRES_ANUALES/AÑO_<YYYY>.
+   * 2. Genera el PDF oficial de Balance Anual con todas las estadísticas.
+   * 3. Registra el cierre en CIERRES_ANUALES.
+   * 4. Reinicia en cero únicamente las tablas operativas (conserva padrón ASISTENCIA + QRs, FUNCIONARIO y menús).
+   */
+  executeYearClose(yearParam, confirmCode) {
+    const lock = LockService.getScriptLock();
+    lock.waitLock(30000);
+    try {
+      const chile = this._getChileNowParts();
+      const targetYear = Number(yearParam) || parseInt(chile.ymd.substring(0, 4), 10);
+      const expected = 'CERRAR ' + targetYear;
+      if (String(confirmCode || '').trim().toUpperCase() !== expected) {
+        throw new Error('Código de confirmación inválido. Debes escribir exactamente: ' + expected);
+      }
+
+      const user = this.getCurrentUser();
+      const stats = this.getAnnualBalanceStats(targetYear);
+      const yearFolder = DriveManager.getAnnualCloseFolder(targetYear);
+      const stamp = Utilities.formatDate(new Date(), APP_CONFIG.TIMEZONE, 'yyyyMMdd_HHmm');
+
+      // 1. Exportar respaldos .xlsx y copias históricas Google Sheets ANTES de borrar nada
+      const targets = [
+        { key: 'MAIN', id: APP_CONFIG.SPREADSHEETS.MAIN, prefix: 'INSPECTOR_COMERCIAL' },
+        { key: 'DEUDAS', id: APP_CONFIG.SPREADSHEETS.DEUDAS, prefix: 'NOTIFICACIONES_DEUDAS' }
+      ];
+      const excelFiles = [];
+      let excelMainUrl = '', excelDeudasUrl = '';
+
+      targets.forEach(t => {
+        const exportUrl = 'https://docs.google.com/spreadsheets/d/' + t.id + '/export?format=xlsx';
+        const response = UrlFetchApp.fetch(exportUrl, {
+          headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+          muteHttpExceptions: true
+        });
+        if (response.getResponseCode() !== 200) {
+          throw new Error('Falló el respaldo Excel de ' + t.prefix + ' (HTTP ' + response.getResponseCode() + '). Cierre abortado: NO se borró ningún dato.');
+        }
+        const xlsxName = t.prefix + '_AÑO_' + targetYear + '_CIERRE_' + stamp + '.xlsx';
+        const xlsxFile = yearFolder.createFile(response.getBlob().setName(xlsxName));
+        if (t.key === 'MAIN') excelMainUrl = xlsxFile.getUrl();
+        if (t.key === 'DEUDAS') excelDeudasUrl = xlsxFile.getUrl();
+
+        excelFiles.push({
+          key: t.key,
+          id: xlsxFile.getId(),
+          name: xlsxFile.getName(),
+          url: xlsxFile.getUrl(),
+          downloadUrl: 'https://drive.google.com/uc?export=download&id=' + xlsxFile.getId(),
+          sizeKb: Math.round(xlsxFile.getSize() / 1024)
+        });
+
+        // Copia nativa en Google Sheets dentro de la carpeta del año
+        try {
+          DriveApp.getFileById(t.id).makeCopy('HISTORICO_' + t.prefix + '_AÑO_' + targetYear + '_' + stamp, yearFolder);
+        } catch (e) {
+          Logger.log('Aviso copia nativa Sheets ' + t.prefix + ': ' + e.message);
+        }
+      });
+
+      // 2. Generar PDF oficial de Balance Anual
+      const pdf = PdfService.generateAnnualBalancePdf(targetYear, stats, {
+        isClosure: true,
+        userEmail: user.email,
+        excelFiles
+      });
+
+      // 3. Registrar cierre en CIERRES_ANUALES
+      const { sheet: closeSheet, headers: closeHeaders } = this._getOrCreateAnnualClosuresSheet();
+      const idCierre = 'ANUAL_' + targetYear + '_' + Utilities.getUuid().substring(0, 6).toUpperCase();
+      const k = stats.kpis;
+      const closeRow = [
+        idCierre,
+        String(targetYear),
+        chile.stampStr,
+        user.email,
+        'CIERRE_ANUAL_COMPLETO',
+        k.totalProcedimientos,
+        k.totalComercio,
+        k.totalFueraHora,
+        k.totalPublicidad,
+        k.totalMoraCount,
+        k.totalMoraMonto,
+        k.totalReportes,
+        k.totalNotificaciones,
+        k.totalAsistenciasFerias,
+        yearFolder.getUrl(),
+        excelMainUrl,
+        excelDeudasUrl,
+        pdf.name,
+        pdf.url,
+        pdf.id
+      ];
+      const targetRow = closeSheet.getLastRow() + 1;
+      closeSheet.getRange(targetRow, 1, 1, closeHeaders.length).setValues([closeRow]);
+
+      // 4. Limpiar (dejar en cero manteniendo fila 1 de encabezados) SOLO las tablas operativas
+      const clearedTables = [];
+      const clearSheetData = (sh, label) => {
+        if (!sh) return;
+        const lr = sh.getLastRow();
+        if (lr >= 2) {
+          sh.deleteRows(2, lr - 1);
+          clearedTables.push({ name: label, clearedRows: lr - 1 });
+        } else {
+          clearedTables.push({ name: label, clearedRows: 0 });
+        }
+      };
+
+      const resetList = APP_CONFIG.ANNUAL_RESET_TABLES || [
+        'COMERCIO', 'FUERA DE HORA', 'GIGANTOGRAFIA', 'PATENTES EN MORA',
+        'REPORTE', 'FERIAS NAVIDEÑAS', 'SEMANA PEÑAFLORINA', 'Hoja 1'
+      ];
+      resetList.forEach(tName => {
+        try {
+          const { sheet } = this._getSheet(tName);
+          clearSheetData(sheet, tName);
+        } catch (e) {
+          Logger.log('Aviso limpiando ' + tName + ': ' + e.message);
+        }
+      });
+
+      // Limpiar hojas CONTROL_FERIA_* y CIERRES_ASISTENCIA_FERIAS en MAIN
+      const mainSs = this._getSpreadsheet('MAIN');
+      mainSs.getSheets().forEach(sh => {
+        const n = sh.getName();
+        if (n.indexOf('CONTROL_FERIA_') === 0 || n === 'CIERRES_ASISTENCIA_FERIAS') {
+          clearSheetData(sh, n);
+        }
+      });
+
+      SpreadsheetApp.flush();
+
+      return {
+        ok: true,
+        year: targetYear,
+        idCierre,
+        folderUrl: yearFolder.getUrl(),
+        excelFiles,
+        pdf,
+        clearedTables,
+        preservedTables: ['ASISTENCIA (Padrón Feriantes + QRs)', 'FUNCIONARIO', 'CIERRES_ANUALES', 'Menús y Catálogos'],
+        stats
+      };
+    } finally {
+      lock.releaseLock();
+    }
   }
 };
