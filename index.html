@@ -903,7 +903,11 @@ if (typeof google === 'undefined' || !google.script) {
 var APP_CONFIG = {
   APP_NAME: 'Departamento de Inspectores Comerciales',
   SHORT_NAME: 'INSPECTOR COMERCIAL',
+  MUNICIPALITY: 'Ilustre Municipalidad de Peñaflor',
   SUBTITLE: 'Seguridad Pública Municipalidad de Peñaflor',
+  DEPARTMENT_UNIT: 'Dirección de Seguridad Pública',
+  DEPARTMENT_HEAD_NAME: 'David Hernández Salum',
+  DEPARTMENT_HEAD_TITLE: 'Jefe de Inspectores Comerciales',
   CREATOR: 'CREADOR CRISTOPHER MACIEL',
   CONTACT: 'CONTACTO 1410',
   PRIMARY_COLOR: '#0c347d',
@@ -4446,6 +4450,9 @@ const App = {
       '<div><strong>Patente:</strong> ' + this.esc(meta.patente || '-') + ' &nbsp;|&nbsp; <strong>Día:</strong> ' + this.esc(meta.dia || '-') + '</div>' +
       '<div><strong>Giro:</strong> ' + this.esc(meta.giro || '-') + '</div>' +
       '<div><strong>Ubicación GPS:</strong> ' + this.esc(meta.ubicacion || 'Sin coordenadas registradas') + '</div>' +
+      '</div>' +
+      '<div style="margin-top:8px;padding-top:6px;border-top:1px solid #d7e2f0;font-size:10px;color:#475467;text-align:center;">' +
+      '<strong>David Hernández Salum</strong> · Jefe de Inspectores Comerciales<br>Ilustre Municipalidad de Peñaflor' +
       '</div></div>' +
       '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:14px;">' +
       '<label class="btn btn-success btn-sm" style="margin:0;cursor:pointer;"><span class="material-icons" style="font-size:16px;">add_a_photo</span> ' + (photoSrc ? 'Cambiar Foto Titular' : 'Cargar Foto Titular') +
@@ -4505,7 +4512,10 @@ const App = {
         : '<div style="width:76px;height:92px;border-radius:8px;border:1.5px solid #0c347d;background:#eef4fc;display:flex;align-items:center;justify-content:center;font-size:10px;color:#0c347d;">FOTO</div>';
       const puestoLbl = s.puesto ? ('PUESTO #' + s.puesto) : 'SIN PUESTO';
       cardsHtml += '<div class="qr-tile">' +
-        '<div style="font-size:10.5px;font-weight:700;color:#0c347d;">DEPTO. INSPECTORES COMERCIALES — PEÑAFLOR</div>' +
+        '<div style="display:flex;align-items:center;justify-content:center;gap:6px;border-bottom:1.5px solid #0c347d;padding-bottom:4px;margin-bottom:4px;">' +
+        '<img src="https://cristophermaciel.github.io/inspector-comercial/assets/logo-penaflor.jpg" onerror="this.src=\'./assets/logo-penaflor.jpg\'" style="height:26px;width:auto;">' +
+        '<div style="text-align:left;line-height:1.15;"><div style="font-size:9.5px;font-weight:700;color:#0c347d;">DEPTO. INSPECTORES COMERCIALES</div><div style="font-size:8.5px;color:#475467;">Ilustre Municipalidad de Peñaflor</div></div>' +
+        '</div>' +
         '<div style="font-size:12.5px;font-weight:700;margin:3px 0;">FERIA ' + this.esc(s.feria) + ' — ' + this.esc(puestoLbl) + '</div>' +
         '<div style="display:flex;align-items:center;justify-content:center;gap:8px;margin:6px 0;">' +
         photoBox +
@@ -4514,7 +4524,9 @@ const App = {
         '<div style="font-size:9.5px;color:#475467;font-weight:700;margin-bottom:2px;">CÓDIGO: ' + this.esc(s.uid) + '</div>' +
         '<div style="font-size:10.5px;text-align:left;margin-top:4px;">' +
         '<strong>' + this.esc(meta.nombre) + '</strong><br>RUT: ' + this.esc(meta.rut || '-') + ' | ROL: ' + this.esc(meta.rol || '-') + '<br>GPS: ' + this.esc(meta.ubicacion || '-') +
-        '</div></div>';
+        '</div>' +
+        '<div style="margin-top:5px;padding-top:4px;border-top:1px solid #d7e2f0;font-size:8.5px;color:#475467;"><strong>David Hernández Salum</strong> · Jefe de Inspectores Comerciales</div>' +
+        '</div>';
     });
     w.document.write('<!DOCTYPE html><html><head><title>Credenciales QR Feria ' + this.esc(this.feriaState.feria) + '</title>' +
       '<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"><\/script>' +
@@ -4834,11 +4846,13 @@ const App = {
         '<td>' + this.esc(m ? m.inspector : '-') + '</td></tr>';
     });
     w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Reporte Diario Asistencia Feria ' + this.esc(st.feria) + ' ' + this.esc(st.fecha) + '</title>' +
-      '<style>body{font-family:Arial,sans-serif;font-size:12px;padding:18px;}h2{color:#0c347d;margin:0 0 4px;}table{width:100%;border-collapse:collapse;margin-top:12px;}th,td{border:1px solid #d7e2f0;padding:6px;text-align:left;}th{background:#0c347d;color:#fff;}</style></head>' +
-      '<body><h2>REPORTE DIARIO INDIVIDUAL DE ASISTENCIA — FERIA ' + this.esc(st.feria) + '</h2>' +
-      '<div>Fecha: <strong>' + this.esc(st.fecha) + '</strong> | Tope de Toma: <strong>17:00 hrs</strong></div>' +
+      '<style>body{font-family:Arial,sans-serif;font-size:12px;padding:18px;color:#1d2939;}.hdr{display:flex;align-items:center;gap:12px;border-bottom:3px solid #0c347d;padding-bottom:8px;margin-bottom:10px;}.hdr img{height:58px;}h2{color:#0c347d;margin:0 0 2px;font-size:16px;}table{width:100%;border-collapse:collapse;margin-top:12px;}th,td{border:1px solid #d7e2f0;padding:6px;text-align:left;}th{background:#0c347d;color:#fff;}.sig{width:260px;margin:34px auto 0;text-align:center;border-top:1.5px solid #0c347d;padding-top:6px;}</style></head>' +
+      '<body><div class="hdr"><img src="https://cristophermaciel.github.io/inspector-comercial/assets/logo-penaflor.jpg" onerror="this.src=\'./assets/logo-penaflor.jpg\'" alt="Logo Peñaflor"><div><div style="font-size:10px;font-weight:700;color:#475467;">ILUSTRE MUNICIPALIDAD DE PEÑAFLOR · DIRECCIÓN DE SEGURIDAD PÚBLICA</div><h2>DEPARTAMENTO DE INSPECTORES COMERCIALES</h2><div><strong>REPORTE DIARIO INDIVIDUAL DE ASISTENCIA — FERIA ' + this.esc(st.feria) + '</strong></div></div></div>' +
+      '<div>Fecha: <strong>' + this.esc(st.fecha) + '</strong> | Tope de Toma: <strong>17:00 hrs</strong> | Titular Depto.: <strong>David Hernández Salum</strong> (Jefe de Inspectores Comerciales)</div>' +
       '<table><thead><tr><th>Puesto</th><th>Titular</th><th>RUT</th><th>ROL</th><th>Estado</th><th>Medio</th><th>Hora</th><th>Inspector</th></tr></thead><tbody>' +
-      rowsHtml + '</tbody></table><script>window.onload=function(){window.print();};<\/script></body></html>');
+      rowsHtml + '</tbody></table>' +
+      '<div class="sig"><strong>David Hernández Salum</strong><br>Jefe de Inspectores Comerciales<br><small style="color:#667085;">Ilustre Municipalidad de Peñaflor</small></div>' +
+      '<script>window.onload=function(){window.print();};<\/script></body></html>');
     w.document.close();
   },
 
@@ -4918,8 +4932,9 @@ const App = {
 
     // Explicación clara de ambos procesos
     html += '<div class="card" style="padding:14px 16px;margin-bottom:14px;border-left:5px solid #4f46e5;background:#f8f9ff;">' +
-      '<div style="font-weight:700;color:#312e81;margin-bottom:4px;">🗂️ Almacenamiento por Año de Trabajo + Balance PDF</div>' +
+      '<div style="font-weight:700;color:#312e81;margin-bottom:4px;">🗂️ Almacenamiento por Año de Trabajo + Balance PDF Oficial</div>' +
       '<div style="font-size:12.5px;color:#344054;line-height:1.55;">' +
+      '<strong>Titular Responsable del Departamento:</strong> David Hernández Salum — Jefe de Inspectores Comerciales (Ilustre Municipalidad de Peñaflor).<br>' +
       '• <strong>Crear PDF Balance Anual (Sin borrar):</strong> genera un informe PDF oficial con todas las estadísticas y fiscalizaciones del año ' + selectedYear + ' sin alterar los datos actuales.<br>' +
       '• <strong>Ejecutar Cierre de Año ' + selectedYear + ':</strong> guarda primero los respaldos Excel (<code>.xlsx</code>) y copias Google Sheets del año en <code>CIERRES_ANUALES/AÑO_' + selectedYear + '</code>, crea el <strong>PDF Balance Anual</strong> y luego deja en cero las tablas operativas para iniciar el año siguiente limpio (<strong>conservando intactos</strong> el padrón de feriantes con sus QRs únicos, funcionarios y menús).' +
       '</div></div>';
