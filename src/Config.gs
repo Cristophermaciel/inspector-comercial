@@ -26,6 +26,10 @@ const APP_CONFIG = {
     'LOS GUINDOS'
   ],
   FERIA_MAX_PUESTOS: 100,
+  // Horario tope diario para toma de asistencia por feria (17:00 hrs Chile)
+  FERIA_ATTENDANCE_CUTOFF_HOUR: 17,
+  FERIA_ATTENDANCE_CUTOFF_MINUTE: 0,
+  FERIA_PDF_FOLDER_NAME: 'ASISTENCIA FERIAS LIBRES',
 
   // Listado oficial de funcionarios / inspectores (sin entradas de EQUIPO)
   DEFAULT_FUNCIONARIOS: [

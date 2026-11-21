@@ -76,6 +76,17 @@ function _handleApiRequest(action, params) {
       case 'saveFeriaAttendance':
         result = DataService.saveFeriaAttendance(params.payload || {});
         break;
+      case 'closeFeriaAttendance':
+        result = DataService.closeFeriaAttendanceAndGeneratePdf(params.feria, params.fecha, {
+          tipoCierre: params.tipoCierre || 'CIERRE_MANUAL'
+        });
+        break;
+      case 'listFeriaPdfs':
+        result = DataService.listFeriaDailyPdfs(params.feria || '', params.limit || 40);
+        break;
+      case 'toggleFeriaCloseTrigger':
+        result = params.enable ? DataService.setupDailyFeriaCloseTrigger() : DataService.removeDailyFeriaCloseTrigger();
+        break;
       default:
         result = { ok: false, error: 'Acción no reconocida: ' + action };
     }
@@ -112,3 +123,14 @@ function apiToggleDailyBackup(enable) { return enable ? BackupExcel.setupDailyBa
 function apiEnsureDriveFolders() { return DriveManager.ensureBaseStructure(); }
 function apiGetFeriaAttendance(feria, fecha) { return DataService.getFeriaAttendance(feria, fecha); }
 function apiSaveFeriaAttendance(payload) { return DataService.saveFeriaAttendance(payload); }
+function apiCloseFeriaAttendance(feria, fecha, tipoCierre) { return DataService.closeFeriaAttendanceAndGeneratePdf(feria, fecha, { tipoCierre: tipoCierre || 'CIERRE_MANUAL' }); }
+function apiListFeriaPdfs(feria, limit) { return DataService.listFeriaDailyPdfs(feria, limit); }
+function apiToggleFeriaCloseTrigger(enable) { return enable ? DataService.setupDailyFeriaCloseTrigger() : DataService.removeDailyFeriaCloseTrigger(); }
+
+/**
+ * Función global invocada por el Trigger diario de las 17:00 hrs Chile
+ * para cerrar las asistencias de cada feria y crear sus PDFs diarios individuales.
+ */
+function scheduledDailyFeriaAttendanceClose() {
+  return DataService.runDailyAutoCloseAt17();
+}

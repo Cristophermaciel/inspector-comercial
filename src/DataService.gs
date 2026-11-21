@@ -105,7 +105,9 @@ const DataService = {
       funcionarios,
       navTables,
       driveFolders,
-      dailyBackupEnabled: BackupExcel.hasDailyBackupTrigger()
+      dailyBackupEnabled: BackupExcel.hasDailyBackupTrigger(),
+      dailyFeriaCloseEnabled: this.hasDailyFeriaCloseTrigger(),
+      feriaCutoffHour: APP_CONFIG.FERIA_ATTENDANCE_CUTOFF_HOUR || 17
     };
   },
 
@@ -551,10 +553,66 @@ const DataService = {
   // CONTROL DE ASISTENCIA INDEPENDIENTE POR FERIA (PUESTOS 1 AL 100 + QR)
   // Crea automáticamente una hoja independiente por cada feria en Google Sheets:
   // CONTROL_FERIA_MODELO, CONTROL_FERIA_LAS_PRADERAS, etc.
+  // Cierre diario automático a las 17:00 hrs con generación de PDF individual.
   // ==========================================================================
+  _normalizeFeriaName(feriaName) {
+    return String(feriaName || 'GENERAL')
+      .toUpperCase()
+      .replace(/^FERIA\s+/, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  },
+
+  _formatSheetDateYmd(val, ssTz) {
+    if (!val) return '';
+    if (val instanceof Date) {
+      return Utilities.formatDate(val, ssTz || APP_CONFIG.TIMEZONE, 'yyyy-MM-dd');
+    }
+    const s = String(val).replace(/^'/, '').trim();
+    const ymd = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+    if (ymd) {
+      return ymd[1] + '-' + String(ymd[2]).padStart(2, '0') + '-' + String(ymd[3]).padStart(2, '0');
+    }
+    const dmy = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    if (dmy) {
+      return dmy[3] + '-' + String(dmy[2]).padStart(2, '0') + '-' + String(dmy[1]).padStart(2, '0');
+    }
+    return s;
+  },
+
+  _formatSheetTimeHms(val, ssTz) {
+    if (!val) return '';
+    if (val instanceof Date) {
+      return Utilities.formatDate(val, ssTz || APP_CONFIG.TIMEZONE, 'HH:mm:ss');
+    }
+    return String(val).replace(/^'/, '').trim();
+  },
+
+  _getChileNowParts() {
+    const now = new Date();
+    const tz = APP_CONFIG.TIMEZONE || 'America/Santiago';
+    return {
+      now,
+      ymd: Utilities.formatDate(now, tz, 'yyyy-MM-dd'),
+      hour: parseInt(Utilities.formatDate(now, tz, 'H'), 10),
+      minute: parseInt(Utilities.formatDate(now, tz, 'm'), 10),
+      timeStr: Utilities.formatDate(now, tz, 'HH:mm:ss'),
+      stampStr: Utilities.formatDate(now, tz, 'dd/MM/yyyy HH:mm:ss')
+    };
+  },
+
+  _extractPuestoNumber(raw) {
+    if (raw === undefined || raw === null) return null;
+    const m = String(raw).match(/\d+/);
+    if (!m) return null;
+    const n = parseInt(m[0], 10);
+    return (n >= 1 && n <= (APP_CONFIG.FERIA_MAX_PUESTOS || 100)) ? n : null;
+  },
+
   _getOrCreateFeriaControlSheet(feriaName) {
     const ss = this._getSpreadsheet('MAIN');
-    const clean = String(feriaName || 'GENERAL').toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '');
+    const normalized = this._normalizeFeriaName(feriaName);
+    const clean = normalized.replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '');
     const sheetName = ('CONTROL_FERIA_' + clean).substring(0, 31);
     let sheet = ss.getSheetByName(sheetName);
     const headers = [
@@ -573,59 +631,173 @@ const DataService = {
         sheet.getRange(1, headers.length).setValue('INSPECTOR_ACOMPANANTE');
       }
     }
-    return { sheet, headers, sheetName };
+    return { sheet, headers, sheetName, ssTz: ss.getSpreadsheetTimeZone() };
+  },
+
+  _getOrCreateFeriaClosuresSheet() {
+    const ss = this._getSpreadsheet('MAIN');
+    const sheetName = 'CIERRES_ASISTENCIA_FERIAS';
+    const headers = [
+      'ID_CIERRE', 'FECHA_JORNADA', 'FERIA', 'HORA_CIERRE', 'TIPO_CIERRE',
+      'PUESTOS_OCUPADOS', 'ASISTEN', 'NO_ASISTEN', 'PENDIENTES',
+      'POR_QR', 'MANUAL', 'INSPECTORES', 'HOJA_EXCEL',
+      'PDF_NOMBRE', 'PDF_URL', 'PDF_ID'
+    ];
+    let sheet = ss.getSheetByName(sheetName);
+    if (!sheet) {
+      sheet = ss.insertSheet(sheetName);
+      sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+      sheet.setFrozenRows(1);
+    }
+    return { sheet, headers, sheetName, ssTz: ss.getSpreadsheetTimeZone() };
+  },
+
+  _getFeriaClosureRecord(feriaName, fechaStr) {
+    const feria = this._normalizeFeriaName(feriaName);
+    const { sheet, headers, ssTz } = this._getOrCreateFeriaClosuresSheet();
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) return null;
+
+    const values = sheet.getRange(2, 1, lastRow - 1, Math.min(sheet.getLastColumn(), headers.length)).getValues();
+    for (let i = values.length - 1; i >= 0; i--) {
+      const r = values[i];
+      const rFecha = this._formatSheetDateYmd(r[1], ssTz);
+      const rFeria = this._normalizeFeriaName(r[2]);
+      if (rFeria === feria && rFecha === fechaStr) {
+        return {
+          _RowNumber: i + 2,
+          idCierre: r[0] || '',
+          fecha: rFecha,
+          feria: rFeria,
+          horaCierre: this._formatSheetTimeHms(r[3], ssTz),
+          tipoCierre: String(r[4] || ''),
+          ocupados: Number(r[5]) || 0,
+          asisten: Number(r[6]) || 0,
+          noAsisten: Number(r[7]) || 0,
+          pendientes: Number(r[8]) || 0,
+          porQr: Number(r[9]) || 0,
+          manual: Number(r[10]) || 0,
+          inspectores: String(r[11] || ''),
+          sheetName: String(r[12] || ''),
+          pdfName: String(r[13] || ''),
+          pdfUrl: String(r[14] || ''),
+          pdfId: String(r[15] || ''),
+          downloadUrl: r[15] ? ('https://drive.google.com/uc?export=download&id=' + r[15]) : ''
+        };
+      }
+    }
+    return null;
+  },
+
+  _getFeriaClosureStatus(feriaName, fechaStr) {
+    const feria = this._normalizeFeriaName(feriaName);
+    const chile = this._getChileNowParts();
+    const cutoffHour = Number(APP_CONFIG.FERIA_ATTENDANCE_CUTOFF_HOUR);
+    const cutoffH = isNaN(cutoffHour) ? 17 : cutoffHour;
+    const fecha = String(fechaStr || chile.ymd).trim();
+
+    const record = this._getFeriaClosureRecord(feria, fecha);
+    const isPastDate = fecha < chile.ymd;
+    const isPastCutoffToday = (fecha === chile.ymd) && (chile.hour >= cutoffH);
+    const isClosed = Boolean(record || isPastDate || isPastCutoffToday);
+
+    let reason = 'ABIERTA';
+    if (record) {
+      reason = record.tipoCierre || 'CERRADA';
+    } else if (isPastDate) {
+      reason = 'JORNADA_ANTERIOR';
+    } else if (isPastCutoffToday) {
+      reason = 'TOPE_17H';
+    }
+
+    return {
+      isClosed,
+      reason,
+      cutoffHour: cutoffH,
+      chileDate: chile.ymd,
+      chileTime: chile.timeStr,
+      closedAt: record ? record.horaCierre : (isPastCutoffToday || isPastDate ? (String(cutoffH).padStart(2, '0') + ':00:00') : ''),
+      pdfName: record ? record.pdfName : '',
+      pdfUrl: record ? record.pdfUrl : '',
+      pdfId: record ? record.pdfId : '',
+      downloadUrl: record ? record.downloadUrl : '',
+      autoTriggerEnabled: this.hasDailyFeriaCloseTrigger()
+    };
   },
 
   getFeriaAttendance(feriaName, fechaStr) {
-    const { sheet, headers } = this._getOrCreateFeriaControlSheet(feriaName);
+    const feria = this._normalizeFeriaName(feriaName);
+    const chile = this._getChileNowParts();
+    const targetFecha = String(fechaStr || chile.ymd).trim();
+    const { sheet, headers, sheetName, ssTz } = this._getOrCreateFeriaControlSheet(feria);
     const lastRow = sheet.getLastRow();
-    if (lastRow < 2) return { feria: feriaName, fecha: fechaStr, marks: {} };
-
-    const readCols = Math.min(sheet.getLastColumn(), headers.length);
-    const values = sheet.getRange(2, 1, lastRow - 1, readCols).getValues();
     const marks = {};
-    values.forEach((row, idx) => {
-      const fVal = row[1] instanceof Date
-        ? Utilities.formatDate(row[1], APP_CONFIG.TIMEZONE, 'yyyy-MM-dd')
-        : String(row[1] || '').trim();
-      if (fechaStr && fVal !== fechaStr) return;
-      const puesto = Number(row[4]);
-      if (!puesto) return;
-      marks[puesto] = {
-        _RowNumber: idx + 2,
-        idRegistro: row[0],
-        fecha: fVal,
-        hora: row[2] instanceof Date ? Utilities.formatDate(row[2], APP_CONFIG.TIMEZONE, 'HH:mm:ss') : String(row[2] || ''),
-        feria: row[3],
-        puesto: puesto,
-        idFeriante: row[5],
-        nombre: row[6],
-        rut: row[7],
-        rol: row[8],
-        patente: row[9],
-        giro: row[10],
-        estado: row[11],
-        medio: row[12],
-        inspector: row[13],
-        ubicacion: row[14],
-        observaciones: row[15],
-        inspectorAcompanante: row[16] || ''
-      };
-    });
-    return { feria: feriaName, fecha: fechaStr, marks };
+
+    if (lastRow >= 2) {
+      const readCols = Math.min(sheet.getLastColumn(), headers.length);
+      const values = sheet.getRange(2, 1, lastRow - 1, readCols).getValues();
+      values.forEach((row, idx) => {
+        const fVal = this._formatSheetDateYmd(row[1], ssTz);
+        if (targetFecha && fVal !== targetFecha) return;
+        const puesto = Number(row[4]);
+        if (!puesto) return;
+        marks[puesto] = {
+          _RowNumber: idx + 2,
+          idRegistro: row[0],
+          fecha: fVal,
+          hora: this._formatSheetTimeHms(row[2], ssTz),
+          feria: row[3] || feria,
+          puesto: puesto,
+          idFeriante: row[5] || '',
+          nombre: row[6] || '',
+          rut: row[7] || '',
+          rol: row[8] || '',
+          patente: row[9] || '',
+          giro: row[10] || '',
+          estado: row[11] || '',
+          medio: row[12] || '',
+          inspector: row[13] || '',
+          ubicacion: row[14] || '',
+          observaciones: row[15] || '',
+          inspectorAcompanante: row[16] || ''
+        };
+      });
+    }
+
+    const closure = this._getFeriaClosureStatus(feria, targetFecha);
+    return {
+      ok: true,
+      feria,
+      fecha: targetFecha,
+      sheetName,
+      cutoffHour: closure.cutoffHour,
+      closure,
+      marks
+    };
   },
 
   saveFeriaAttendance(payload) {
     const lock = LockService.getScriptLock();
     lock.waitLock(20000);
     try {
-      const feria = String(payload.feria || '').toUpperCase().trim();
-      const fecha = String(payload.fecha || Utilities.formatDate(new Date(), APP_CONFIG.TIMEZONE, 'yyyy-MM-dd')).trim();
-      const puesto = Number(payload.puesto);
-      if (!feria || !puesto) throw new Error('Feria y N° de puesto son obligatorios.');
+      const feria = this._normalizeFeriaName(payload.feria);
+      const chile = this._getChileNowParts();
+      const fecha = String(payload.fecha || chile.ymd).trim();
+      const puesto = this._extractPuestoNumber(payload.puesto);
+      if (!feria || !puesto) throw new Error('Feria y N° de puesto (1 al 100) son obligatorios.');
 
-      const { sheet, headers } = this._getOrCreateFeriaControlSheet(feria);
-      const hora = Utilities.formatDate(new Date(), APP_CONFIG.TIMEZONE, 'HH:mm:ss');
+      // Validar cierre diario (tope 17:00 hrs o jornada ya cerrada)
+      const closure = this._getFeriaClosureStatus(feria, fecha);
+      if (closure.isClosed) {
+        const cutoffStr = String(closure.cutoffHour).padStart(2, '0') + ':00 hrs';
+        throw new Error(
+          'La toma de asistencia para FERIA ' + feria + ' del día ' + fecha +
+          ' se encuentra CERRADA (tope diario ' + cutoffStr + '). Ya no se pueden registrar ni modificar marcas.'
+        );
+      }
+
+      const { sheet, headers, sheetName, ssTz } = this._getOrCreateFeriaControlSheet(feria);
+      const hora = chile.timeStr;
 
       // Buscar si ya existe marca para esta feria + fecha + puesto para actualizarla
       const lastRow = sheet.getLastRow();
@@ -634,9 +806,7 @@ const DataService = {
       if (lastRow >= 2) {
         const existingVals = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
         for (let i = 0; i < existingVals.length; i++) {
-          const rFecha = existingVals[i][1] instanceof Date
-            ? Utilities.formatDate(existingVals[i][1], APP_CONFIG.TIMEZONE, 'yyyy-MM-dd')
-            : String(existingVals[i][1] || '').trim();
+          const rFecha = this._formatSheetDateYmd(existingVals[i][1], ssTz);
           if (rFecha === fecha && Number(existingVals[i][4]) === puesto) {
             existingRow = i + 2;
             idReg = existingVals[i][0] || idReg;
@@ -644,6 +814,10 @@ const DataService = {
           }
         }
       }
+
+      const acompStr = Array.isArray(payload.inspectorAcompanante)
+        ? payload.inspectorAcompanante.join(' , ')
+        : (payload.inspectorAcompanante || '');
 
       const rowArr = [
         idReg,
@@ -662,16 +836,19 @@ const DataService = {
         payload.inspector || '',
         payload.ubicacion || '',
         payload.observaciones || '',
-        Array.isArray(payload.inspectorAcompanante)
-          ? payload.inspectorAcompanante.join(' , ')
-          : (payload.inspectorAcompanante || '')
+        acompStr
       ];
 
       const targetRow = existingRow || (sheet.getLastRow() + 1);
+      // Formatear FECHA_JORNADA y HORA_MARCA como texto plano para evitar desfase por zona horaria
+      sheet.getRange(targetRow, 2, 1, 2).setNumberFormat('@');
       sheet.getRange(targetRow, 1, 1, headers.length).setValues([rowArr]);
+      SpreadsheetApp.flush();
 
       return {
         ok: true,
+        sheetName,
+        rowNumber: targetRow,
         mark: {
           _RowNumber: targetRow,
           idRegistro: idReg,
@@ -679,14 +856,275 @@ const DataService = {
           hora,
           feria,
           puesto,
+          idFeriante: rowArr[5],
+          nombre: rowArr[6],
+          rut: rowArr[7],
+          rol: rowArr[8],
+          patente: rowArr[9],
+          giro: rowArr[10],
           estado: rowArr[11],
           medio: rowArr[12],
           inspector: rowArr[13],
+          ubicacion: rowArr[14],
+          observaciones: rowArr[15],
           inspectorAcompanante: rowArr[16]
         }
       };
     } finally {
       lock.releaseLock();
+    }
+  },
+
+  /**
+   * Cierra la jornada de una feria para una fecha específica y crea su documento PDF diario individual.
+   */
+  closeFeriaAttendanceAndGeneratePdf(feriaName, fechaStr, options) {
+    const lock = LockService.getScriptLock();
+    lock.waitLock(30000);
+    try {
+      const feria = this._normalizeFeriaName(feriaName);
+      const chile = this._getChileNowParts();
+      const fecha = String(fechaStr || chile.ymd).trim();
+      const opts = options || {};
+      const tipoCierre = opts.tipoCierre || 'CIERRE_MANUAL';
+
+      const att = this.getFeriaAttendance(feria, fecha);
+      const marks = att.marks || {};
+      const padronRows = this._safeReadRows('ASISTENCIA').filter(
+        r => this._normalizeFeriaName(r['FERIA']) === feria
+      );
+
+      const byPuesto = {};
+      padronRows.forEach(r => {
+        const p = this._extractPuestoNumber(r['N° Puesto']);
+        if (p && !byPuesto[p]) byPuesto[p] = r;
+      });
+
+      const reportRows = [];
+      const inspectoresSet = {};
+      let ocupados = 0, asisten = 0, noAsisten = 0, porQr = 0, manual = 0;
+
+      const maxPuestos = APP_CONFIG.FERIA_MAX_PUESTOS || 100;
+      for (let p = 1; p <= maxPuestos; p++) {
+        const r = byPuesto[p] || null;
+        const m = marks[p] || null;
+        if (r) ocupados++;
+        if (!r && !m) continue;
+
+        if (m) {
+          if (m.estado === 'ASISTE') asisten++;
+          else if (m.estado === 'NO ASISTE') noAsisten++;
+          if (String(m.medio || '').toUpperCase() === 'QR') porQr++;
+          else manual++;
+          if (m.inspector) inspectoresSet[String(m.inspector).trim()] = true;
+          if (m.inspectorAcompanante) {
+            String(m.inspectorAcompanante).split(',').forEach(a => {
+              const t = a.trim();
+              if (t) inspectoresSet[t] = true;
+            });
+          }
+        }
+
+        reportRows.push({
+          puesto: p,
+          nombre: (m && m.nombre) || (r && r['NOMBRE DUEÑO']) || ('PUESTO #' + p),
+          rut: (m && m.rut) || (r && r['RUT DUEÑO']) || '',
+          rol: (m && m.rol) || (r && r['ROL']) || '',
+          patente: (m && m.patente) || (r && r['PATENTE']) || '',
+          giro: (m && m.giro) || (r && r['GIRO']) || '',
+          estado: m ? m.estado : 'PENDIENTE',
+          medio: m ? m.medio : '',
+          hora: m ? m.hora : '',
+          inspector: m ? (m.inspector + (m.inspectorAcompanante ? ' / ' + m.inspectorAcompanante : '')) : ''
+        });
+      }
+
+      const pendientes = Math.max(ocupados - (asisten + noAsisten), 0);
+      const inspectoresStr = Object.keys(inspectoresSet).join(', ') || 'No especificado';
+
+      const pdf = PdfService.generateFeriaDailyPdf(feria, fecha, {
+        sheetName: att.sheetName,
+        tipoCierre: tipoCierre === 'AUTOMATICO_17H' ? 'CIERRE AUTOMÁTICO DIARIO (17:00 HRS)' : 'CIERRE DE JORNADA (TOPE 17:00 HRS)',
+        inspectores: inspectoresStr,
+        summary: { ocupados, asisten, noAsisten, pendientes, porQr, manual },
+        rows: reportRows
+      });
+
+      // Guardar / actualizar el registro del cierre y enlace PDF en CIERRES_ASISTENCIA_FERIAS
+      const { sheet, headers } = this._getOrCreateFeriaClosuresSheet();
+      const existing = this._getFeriaClosureRecord(feria, fecha);
+      const idCierre = existing ? existing.idCierre : Utilities.getUuid().substring(0, 8).toUpperCase();
+      const targetRow = existing ? existing._RowNumber : (sheet.getLastRow() + 1);
+
+      const closureRow = [
+        idCierre,
+        fecha,
+        feria,
+        chile.timeStr,
+        tipoCierre,
+        ocupados,
+        asisten,
+        noAsisten,
+        pendientes,
+        porQr,
+        manual,
+        inspectoresStr,
+        att.sheetName,
+        pdf.name,
+        pdf.url,
+        pdf.id
+      ];
+
+      sheet.getRange(targetRow, 2, 1, 1).setNumberFormat('@');
+      sheet.getRange(targetRow, 4, 1, 1).setNumberFormat('@');
+      sheet.getRange(targetRow, 1, 1, headers.length).setValues([closureRow]);
+      SpreadsheetApp.flush();
+
+      return {
+        ok: true,
+        feria,
+        fecha,
+        sheetName: att.sheetName,
+        pdf,
+        closure: this._getFeriaClosureStatus(feria, fecha)
+      };
+    } finally {
+      lock.releaseLock();
+    }
+  },
+
+  /**
+   * Lista los reportes PDF diarios individuales generados (opcionalmente filtrados por feria).
+   */
+  listFeriaDailyPdfs(feriaName, limit) {
+    const filterFeria = feriaName ? this._normalizeFeriaName(feriaName) : '';
+    const { sheet, headers, ssTz } = this._getOrCreateFeriaClosuresSheet();
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) return [];
+
+    const values = sheet.getRange(2, 1, lastRow - 1, Math.min(sheet.getLastColumn(), headers.length)).getValues();
+    const list = [];
+    values.forEach(r => {
+      const f = this._normalizeFeriaName(r[2]);
+      if (filterFeria && f !== filterFeria) return;
+      if (!r[14]) return;
+      list.push({
+        idCierre: r[0] || '',
+        fecha: this._formatSheetDateYmd(r[1], ssTz),
+        feria: f,
+        horaCierre: this._formatSheetTimeHms(r[3], ssTz),
+        tipoCierre: String(r[4] || ''),
+        ocupados: Number(r[5]) || 0,
+        asisten: Number(r[6]) || 0,
+        noAsisten: Number(r[7]) || 0,
+        pendientes: Number(r[8]) || 0,
+        porQr: Number(r[9]) || 0,
+        manual: Number(r[10]) || 0,
+        inspectores: String(r[11] || ''),
+        sheetName: String(r[12] || ''),
+        pdfName: String(r[13] || ''),
+        pdfUrl: String(r[14] || ''),
+        pdfId: String(r[15] || ''),
+        downloadUrl: r[15] ? ('https://drive.google.com/uc?export=download&id=' + r[15]) : String(r[14] || '')
+      });
+    });
+
+    list.sort((a, b) => (b.fecha + ' ' + b.horaCierre).localeCompare(a.fecha + ' ' + a.horaCierre));
+    return list.slice(0, limit || 40);
+  },
+
+  /**
+   * Proceso automático de las 17:00 hrs Chile:
+   * Recorre todas las ferias con asistencias registradas hoy, cierra cada jornada
+   * y genera su reporte PDF diario individual en Google Drive.
+   */
+  runDailyAutoCloseAt17(fechaOverride) {
+    const chile = this._getChileNowParts();
+    const fecha = String(fechaOverride || chile.ymd).trim();
+    const ss = this._getSpreadsheet('MAIN');
+
+    // Reunir todas las ferias del catálogo + cualquier hoja CONTROL_FERIA_* existente
+    const feriasMap = {};
+    (APP_CONFIG.FERIAS_LIST || []).forEach(f => {
+      feriasMap[this._normalizeFeriaName(f)] = true;
+    });
+    ss.getSheets().forEach(sh => {
+      const name = sh.getName();
+      if (name.indexOf('CONTROL_FERIA_') === 0) {
+        const lastRow = sh.getLastRow();
+        if (lastRow >= 2) {
+          const sampleFeria = sh.getRange(2, 4).getValue();
+          if (sampleFeria) {
+            feriasMap[this._normalizeFeriaName(sampleFeria)] = true;
+          } else {
+            feriasMap[name.replace(/^CONTROL_FERIA_/, '').replace(/_/g, ' ')] = true;
+          }
+        }
+      }
+    });
+
+    const results = [];
+    Object.keys(feriasMap).forEach(feria => {
+      try {
+        const att = this.getFeriaAttendance(feria, fecha);
+        const marksCount = Object.keys(att.marks || {}).length;
+        if (marksCount === 0) return;
+
+        // Evitar duplicar si ya existe PDF generado para esta feria y fecha
+        const existing = this._getFeriaClosureRecord(feria, fecha);
+        if (existing && existing.pdfUrl) {
+          results.push({ feria, fecha, skipped: true, reason: 'PDF ya generado', pdfUrl: existing.pdfUrl });
+          return;
+        }
+
+        const res = this.closeFeriaAttendanceAndGeneratePdf(feria, fecha, { tipoCierre: 'AUTOMATICO_17H' });
+        results.push({ feria, fecha, ok: true, marksCount, pdfUrl: res.pdf.url, pdfName: res.pdf.name });
+      } catch (e) {
+        Logger.log('Error cerrando feria ' + feria + ' (' + fecha + '): ' + e.message);
+        results.push({ feria, fecha, ok: false, error: e.message });
+      }
+    });
+
+    return { ok: true, fecha, closedCount: results.filter(r => r.ok).length, results };
+  },
+
+  setupDailyFeriaCloseTrigger() {
+    const fnName = 'scheduledDailyFeriaAttendanceClose';
+    const existing = ScriptApp.getProjectTriggers();
+    existing.forEach(tr => {
+      if (tr.getHandlerFunction() === fnName) {
+        ScriptApp.deleteTrigger(tr);
+      }
+    });
+
+    const cutoffHour = Number(APP_CONFIG.FERIA_ATTENDANCE_CUTOFF_HOUR);
+    const h = isNaN(cutoffHour) ? 17 : cutoffHour;
+    ScriptApp.newTrigger(fnName)
+      .timeBased()
+      .everyDays(1)
+      .atHour(h)
+      .nearMinute(5)
+      .create();
+
+    return { ok: true, enabled: true, message: 'Cierre automático diario y creación de PDF individual por feria programado a las ' + String(h).padStart(2, '0') + ':00 hrs.' };
+  },
+
+  removeDailyFeriaCloseTrigger() {
+    const fnName = 'scheduledDailyFeriaAttendanceClose';
+    const existing = ScriptApp.getProjectTriggers();
+    existing.forEach(tr => {
+      if (tr.getHandlerFunction() === fnName) {
+        ScriptApp.deleteTrigger(tr);
+      }
+    });
+    return { ok: true, enabled: false, message: 'Cierre automático diario de ferias desactivado.' };
+  },
+
+  hasDailyFeriaCloseTrigger() {
+    try {
+      return ScriptApp.getProjectTriggers().some(tr => tr.getHandlerFunction() === 'scheduledDailyFeriaAttendanceClose');
+    } catch (e) {
+      return false;
     }
   }
 };

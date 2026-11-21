@@ -46,6 +46,8 @@ const DriveManager = {
     Object.keys(APP_CONFIG.PDF_BOTS).forEach(tableName => {
       this.getOrCreateFolder(APP_CONFIG.PDF_BOTS[tableName].folderName, pdfs);
     });
+    // Carpeta de reportes PDF diarios individuales de Asistencia de Ferias Libres
+    this.getOrCreateFolder(APP_CONFIG.FERIA_PDF_FOLDER_NAME || 'ASISTENCIA FERIAS LIBRES', pdfs);
 
     return {
       root: { id: root.getId(), name: root.getName(), url: root.getUrl() },
@@ -77,6 +79,16 @@ const DriveManager = {
     const root = this.getAppRootFolder();
     const pdfsRoot = this.getOrCreateFolder(APP_CONFIG.DRIVE_SUBFOLDERS.DOCUMENTOS_PDF, root);
     return this.getOrCreateFolder(folderName || 'GENERAL', pdfsRoot);
+  },
+
+  /**
+   * Obtiene/crea la carpeta individual de reportes PDF diarios de una feria:
+   * INSPECTOR_COMERCIAL_DRIVE / DOCUMENTOS_PDF / ASISTENCIA FERIAS LIBRES / FERIA <NOMBRE_FERIA>
+   */
+  getFeriaPdfFolder(feriaName) {
+    const baseFolder = this.getPdfFolder(APP_CONFIG.FERIA_PDF_FOLDER_NAME || 'ASISTENCIA FERIAS LIBRES');
+    const clean = String(feriaName || 'GENERAL').toUpperCase().replace(/^FERIA\s+/, '').trim();
+    return this.getOrCreateFolder('FERIA ' + clean, baseFolder);
   },
 
   /**

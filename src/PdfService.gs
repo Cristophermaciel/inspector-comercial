@@ -148,6 +148,158 @@ const PdfService = {
     return pdfFolder.createFile(blob);
   },
 
+  /**
+   * Genera un Reporte PDF Diario Individual de Asistencia para una Feria y Fecha específica.
+   * Se guarda en: INSPECTOR_COMERCIAL_DRIVE / DOCUMENTOS_PDF / ASISTENCIA FERIAS LIBRES / FERIA <FERIA>/
+   */
+  generateFeriaDailyPdf(feriaName, fechaStr, reportData) {
+    const cleanFeria = String(feriaName || 'GENERAL').toUpperCase().replace(/^FERIA\s+/, '').trim();
+    const safeFeriaFile = cleanFeria.replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '');
+    const safeFecha = String(fechaStr || Utilities.formatDate(new Date(), APP_CONFIG.TIMEZONE, 'yyyy-MM-dd')).trim();
+    const fileName = 'ASISTENCIA_FERIA_' + safeFeriaFile + '_' + safeFecha + '.pdf';
+    const pdfFolder = DriveManager.getFeriaPdfFolder(cleanFeria);
+
+    // Si ya existía un PDF con el mismo nombre para esa feria y fecha, mover el anterior a papelera para evitar duplicados
+    try {
+      const existingFiles = pdfFolder.getFilesByName(fileName);
+      while (existingFiles.hasNext()) {
+        existingFiles.next().setTrashed(true);
+      }
+    } catch (e) {}
+
+    const nowStr = Utilities.formatDate(new Date(), APP_CONFIG.TIMEZONE, 'dd/MM/yyyy HH:mm:ss');
+    const summary = reportData.summary || {};
+    const rows = reportData.rows || [];
+    const inspectores = reportData.inspectores || 'No especificado';
+    const sheetName = reportData.sheetName || ('CONTROL_FERIA_' + safeFeriaFile);
+    const tipoCierre = reportData.tipoCierre || 'CIERRE DIARIO (17:00 HRS)';
+
+    // Formatear fecha dd/MM/yyyy para visualización
+    const fParts = safeFecha.split('-');
+    const fechaDisplay = fParts.length === 3 ? (fParts[2] + '/' + fParts[1] + '/' + fParts[0]) : safeFecha;
+
+    let tableRowsHtml = '';
+    rows.forEach(item => {
+      const est = String(item.estado || 'PENDIENTE').toUpperCase();
+      let badgeBg = '#f2f4f7';
+      let badgeColor = '#475467';
+      if (est === 'ASISTE') {
+        badgeBg = '#e6f6ec';
+        badgeColor = '#12805c';
+      } else if (est === 'NO ASISTE') {
+        badgeBg = '#fdecec';
+        badgeColor = '#c92a2a';
+      }
+
+      const medio = String(item.medio || '').toUpperCase();
+      const medioBg = medio === 'QR' ? '#e6f2fc' : (medio ? '#fff4e5' : '#f8fafc');
+      const medioColor = medio === 'QR' ? '#0b7bde' : (medio ? '#b54708' : '#667085');
+
+      tableRowsHtml += '<tr>' +
+        '<td style="border:1px solid #d7e2f0;padding:5px 6px;text-align:center;font-weight:bold;color:#0c347d;">#' + this._esc(item.puesto) + '</td>' +
+        '<td style="border:1px solid #d7e2f0;padding:5px 6px;"><strong>' + this._esc(item.nombre || '-') + '</strong></td>' +
+        '<td style="border:1px solid #d7e2f0;padding:5px 6px;white-space:nowrap;">' + this._esc(item.rut || '-') + '</td>' +
+        '<td style="border:1px solid #d7e2f0;padding:5px 6px;">' + this._esc(item.rol || '-') + '</td>' +
+        '<td style="border:1px solid #d7e2f0;padding:5px 6px;">' + this._esc(item.patente || '-') + '</td>' +
+        '<td style="border:1px solid #d7e2f0;padding:5px 6px;">' + this._esc(item.giro || '-') + '</td>' +
+        '<td style="border:1px solid #d7e2f0;padding:5px 6px;text-align:center;"><span style="display:inline-block;padding:2px 7px;border-radius:10px;font-weight:bold;font-size:10px;background:' + badgeBg + ';color:' + badgeColor + ';">' + this._esc(est) + '</span></td>' +
+        '<td style="border:1px solid #d7e2f0;padding:5px 6px;text-align:center;"><span style="display:inline-block;padding:2px 6px;border-radius:8px;font-weight:bold;font-size:10px;background:' + medioBg + ';color:' + medioColor + ';">' + this._esc(medio || '-') + '</span></td>' +
+        '<td style="border:1px solid #d7e2f0;padding:5px 6px;text-align:center;white-space:nowrap;">' + this._esc(item.hora || '-') + '</td>' +
+        '<td style="border:1px solid #d7e2f0;padding:5px 6px;">' + this._esc(item.inspector || '-') + '</td>' +
+        '</tr>';
+    });
+
+    if (!tableRowsHtml) {
+      tableRowsHtml = '<tr><td colspan="10" style="border:1px solid #d7e2f0;padding:14px;text-align:center;color:#667085;">Sin registros de asistencia para esta jornada.</td></tr>';
+    }
+
+    const html = '<!DOCTYPE html><html><head><meta charset="utf-8"><style>' +
+      '@page { size: letter landscape; margin: 14mm; }' +
+      'body { font-family: Arial, Helvetica, sans-serif; font-size: 10.5px; color: #1d2939; margin: 0; }' +
+      '.header { border-bottom: 3px solid #0c347d; padding-bottom: 8px; margin-bottom: 12px; }' +
+      '.title { font-size: 16px; font-weight: bold; color: #0c347d; }' +
+      '.subtitle { font-size: 12px; color: #475467; margin-top: 2px; }' +
+      '.meta { background: #f4f7fb; border: 1px solid #d7e2f0; border-radius: 6px; padding: 8px 10px; margin-bottom: 12px; }' +
+      '.meta table { width: 100%; border-collapse: collapse; }' +
+      '.meta td { padding: 2px 6px; font-size: 10.5px; }' +
+      '.kpis { width: 100%; border-collapse: separate; border-spacing: 6px 0; margin: 0 -6px 12px -6px; }' +
+      '.kpi { border: 1px solid #d7e2f0; border-top: 3px solid #0c347d; border-radius: 6px; padding: 7px 8px; text-align: center; background: #fff; }' +
+      '.kpi-lbl { font-size: 9px; color: #667085; text-transform: uppercase; font-weight: bold; }' +
+      '.kpi-val { font-size: 16px; font-weight: bold; margin-top: 2px; }' +
+      'table.data { width: 100%; border-collapse: collapse; font-size: 9.8px; }' +
+      'table.data th { background: #0c347d; color: #ffffff; padding: 6px 5px; text-align: left; border: 1px solid #0c347d; font-size: 9.5px; }' +
+      '.footer { margin-top: 16px; font-size: 9.5px; color: #667085; text-align: center; border-top: 1px solid #e0e0e0; padding-top: 6px; }' +
+      '</style></head><body>' +
+      '<div class="header">' +
+        '<div class="title">' + this._esc(APP_CONFIG.APP_NAME) + '</div>' +
+        '<div class="subtitle">' + this._esc(APP_CONFIG.SUBTITLE) + ' — <strong>REPORTE DIARIO INDIVIDUAL DE ASISTENCIA</strong></div>' +
+      '</div>' +
+      '<div class="meta"><table>' +
+        '<tr>' +
+          '<td><strong>Feria Libre:</strong> FERIA ' + this._esc(cleanFeria) + '</td>' +
+          '<td><strong>Fecha Jornada:</strong> ' + this._esc(fechaDisplay) + '</td>' +
+          '<td><strong>Tope de Toma:</strong> 17:00 hrs</td>' +
+        '</tr>' +
+        '<tr>' +
+          '<td><strong>Tipo de Cierre:</strong> ' + this._esc(tipoCierre) + '</td>' +
+          '<td><strong>Hoja Excel:</strong> ' + this._esc(sheetName) + '</td>' +
+          '<td><strong>Generado:</strong> ' + this._esc(nowStr) + '</td>' +
+        '</tr>' +
+        '<tr>' +
+          '<td colspan="3"><strong>Inspector(es) a Cargo:</strong> ' + this._esc(inspectores) + '</td>' +
+        '</tr>' +
+      '</table></div>' +
+      '<table class="kpis"><tr>' +
+        '<td class="kpi"><div class="kpi-lbl">Puestos Ocupados</div><div class="kpi-val" style="color:#0c347d;">' + this._esc(summary.ocupados || 0) + '</div></td>' +
+        '<td class="kpi" style="border-top-color:#12805c;"><div class="kpi-lbl">Asisten</div><div class="kpi-val" style="color:#12805c;">' + this._esc(summary.asisten || 0) + '</div></td>' +
+        '<td class="kpi" style="border-top-color:#c92a2a;"><div class="kpi-lbl">No Asisten</div><div class="kpi-val" style="color:#c92a2a;">' + this._esc(summary.noAsisten || 0) + '</div></td>' +
+        '<td class="kpi" style="border-top-color:#d97706;"><div class="kpi-lbl">Pendientes</div><div class="kpi-val" style="color:#d97706;">' + this._esc(summary.pendientes || 0) + '</div></td>' +
+        '<td class="kpi" style="border-top-color:#0b7bde;"><div class="kpi-lbl">Ingreso por QR</div><div class="kpi-val" style="color:#0b7bde;">' + this._esc(summary.porQr || 0) + '</div></td>' +
+        '<td class="kpi" style="border-top-color:#475467;"><div class="kpi-lbl">Ingreso Manual</div><div class="kpi-val" style="color:#475467;">' + this._esc(summary.manual || 0) + '</div></td>' +
+      '</tr></table>' +
+      '<table class="data"><thead><tr>' +
+        '<th style="text-align:center;width:54px;">PUESTO</th>' +
+        '<th>TITULAR / FERIANTE</th>' +
+        '<th style="width:82px;">RUT</th>' +
+        '<th style="width:65px;">ROL</th>' +
+        '<th style="width:60px;">PATENTE</th>' +
+        '<th>GIRO</th>' +
+        '<th style="text-align:center;width:78px;">ESTADO</th>' +
+        '<th style="text-align:center;width:62px;">MEDIO</th>' +
+        '<th style="text-align:center;width:64px;">HORA</th>' +
+        '<th>INSPECTOR</th>' +
+      '</tr></thead><tbody>' + tableRowsHtml + '</tbody></table>' +
+      '<div class="footer">' +
+        'Documento oficial generado al cierre diario de asistencia (tope 17:00 hrs) — ' +
+        this._esc(APP_CONFIG.CREATOR) + ' | ' + this._esc(APP_CONFIG.CONTACT) +
+      '</div></body></html>';
+
+    const blob = Utilities.newBlob(html, MimeType.HTML, fileName + '.html')
+      .getAs(MimeType.PDF)
+      .setName(fileName);
+    const pdfFile = pdfFolder.createFile(blob);
+
+    try {
+      pdfFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    } catch (e) {
+      try {
+        pdfFile.setSharing(DriveApp.Access.DOMAIN_WITH_LINK, DriveApp.Permission.VIEW);
+      } catch (e2) {}
+    }
+
+    return {
+      id: pdfFile.getId(),
+      name: pdfFile.getName(),
+      url: pdfFile.getUrl(),
+      downloadUrl: 'https://drive.google.com/uc?export=download&id=' + pdfFile.getId(),
+      folderUrl: pdfFolder.getUrl(),
+      folderName: 'FERIA ' + cleanFeria,
+      feria: cleanFeria,
+      fecha: safeFecha,
+      generatedAt: nowStr
+    };
+  },
+
   _esc(str) {
     return String(str || '')
       .replace(/&/g, '&amp;')
