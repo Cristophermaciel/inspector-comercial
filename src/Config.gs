@@ -352,9 +352,10 @@ const TABLE_SCHEMAS = {
       'FOTO CARNET AYUDANTE', 'FOTO CARNET AYUDANTE_15', 'FOTO CARNET AYUDANTE_16',
       'UBICACION', 'OBSERVACIONES'
     ],
-    tableColumns: ['N° Puesto', 'NOMBRE DUEÑO', 'DIA', 'FERIA', 'INSPECTOR', 'INSPECTOR ACOMPAÑANTE', 'RUT DUEÑO', 'PATENTE', 'GIRO'],
+    tableColumns: ['N° Puesto', 'CODIGO_QR', 'NOMBRE DUEÑO', 'DIA', 'FERIA', 'INSPECTOR', 'INSPECTOR ACOMPAÑANTE', 'RUT DUEÑO', 'PATENTE', 'GIRO'],
     columns: [
       { name: 'ID', type: 'Text', isKey: true, initial: 'UNIQUEID', hiddenInForm: true },
+      { name: 'CODIGO_QR', displayName: 'CÓDIGO QR ÚNICO', type: 'Text', readOnly: true, hiddenInForm: true },
       { name: 'FECHA', type: 'DateTime', initial: 'NOW' },
       { name: 'DIA', type: 'Enum', values: ['MARTES', 'MIERCOLES', 'JUEVES', 'VIERNES', 'SABADO', 'DOMINGO'] },
       { name: 'NOMBRE DUEÑO', type: 'Text' },

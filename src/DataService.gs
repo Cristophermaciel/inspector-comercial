@@ -244,6 +244,19 @@ const DataService = {
         recordData[keyCol] = Utilities.getUuid().substring(0, 8).toUpperCase();
       }
 
+      // Garantizar CODIGO_QR único para cada feriante en su feria correspondiente
+      if (tableName === 'ASISTENCIA') {
+        if (!recordData['ID']) {
+          recordData['ID'] = Utilities.getUuid().substring(0, 8).toUpperCase();
+        }
+        recordData['CODIGO_QR'] = this._buildUniqueFerianteQrCode(
+          recordData['FERIA'],
+          recordData['N° Puesto'],
+          recordData['ID'],
+          recordData._RowNumber || (sheet.getLastRow() + 1)
+        );
+      }
+
       // Inicializar FECHA HORA / FECHA si viene vacío
       schema.columns.forEach(col => {
         if (!isEdit && col.initial === 'NOW' && !recordData[col.name]) {
@@ -563,6 +576,115 @@ const DataService = {
       .trim();
   },
 
+  _buildUniqueFerianteQrCode(feriaName, puestoRaw, idVal, rowNum) {
+    const feria = this._normalizeFeriaName(feriaName || 'SIN_FERIA');
+    const cleanFeria = feria
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '') || 'SIN_FERIA';
+    const puesto = this._extractPuestoNumber(puestoRaw);
+    const puestoPart = puesto ? ('P' + String(puesto).padStart(3, '0')) : 'SP';
+    const cleanId = String(idVal || ('R' + (rowNum || '0')))
+      .toUpperCase().replace(/[^A-Z0-9]/g, '').substring(0, 6);
+    return cleanFeria + '-' + puestoPart + '-' + (cleanId || '0000');
+  },
+
+  /**
+   * Audita TODOS los registros de la hoja ASISTENCIA y garantiza que cada feriante
+   * tenga un ID y un CODIGO_QR 100% único en su feria correspondiente.
+   */
+  ensureAllFeriantesQrCodes() {
+    const lock = LockService.getScriptLock();
+    lock.waitLock(30000);
+    try {
+      const { sheet } = this._getSheet('ASISTENCIA');
+      const lastRow = sheet.getLastRow();
+      if (lastRow < 2) {
+        return { ok: true, totalRows: 0, updatedCount: 0, byFeria: {} };
+      }
+
+      let lastCol = Math.max(sheet.getLastColumn(), 1);
+      const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h || '').trim());
+
+      let idColIdx = headers.findIndex(h => h.toUpperCase() === 'ID');
+      let feriaColIdx = headers.findIndex(h => h.toUpperCase() === 'FERIA');
+      let puestoColIdx = headers.findIndex(h => h.toUpperCase().indexOf('PUESTO') !== -1);
+      let qrColIdx = headers.findIndex(h => h.toUpperCase() === 'CODIGO_QR');
+
+      if (qrColIdx === -1) {
+        qrColIdx = lastCol;
+        sheet.getRange(1, qrColIdx + 1).setValue('CODIGO_QR');
+        lastCol++;
+      }
+
+      const numRows = lastRow - 1;
+      const values = sheet.getRange(2, 1, numRows, lastCol).getValues();
+      const usedCodes = {};
+      const byFeria = {};
+      let updatedCount = 0;
+      let missingFeriaCount = 0;
+      let missingPuestoCount = 0;
+
+      const idUpdates = [];
+      const qrUpdates = [];
+
+      for (let i = 0; i < values.length; i++) {
+        const row = values[i];
+        const hasAny = row.some(v => v !== '' && v !== null && v !== undefined);
+        const curId = idColIdx !== -1 ? String(row[idColIdx] || '').trim() : '';
+        const curQr = String(row[qrColIdx] || '').trim();
+
+        if (!hasAny) {
+          idUpdates.push([curId]);
+          qrUpdates.push([curQr]);
+          continue;
+        }
+
+        let finalId = curId;
+        if (!finalId && idColIdx !== -1) {
+          finalId = Utilities.getUuid().substring(0, 8).toUpperCase();
+          updatedCount++;
+        }
+
+        const rawFeria = feriaColIdx !== -1 ? String(row[feriaColIdx] || '').trim() : '';
+        const normFeria = rawFeria ? this._normalizeFeriaName(rawFeria) : 'SIN_FERIA';
+        if (!rawFeria) missingFeriaCount++;
+        byFeria[normFeria] = (byFeria[normFeria] || 0) + 1;
+
+        const rawPuesto = puestoColIdx !== -1 ? row[puestoColIdx] : '';
+        if (!this._extractPuestoNumber(rawPuesto)) missingPuestoCount++;
+
+        let code = this._buildUniqueFerianteQrCode(normFeria, rawPuesto, finalId, i + 2);
+        if (usedCodes[code]) {
+          let seq = 2;
+          while (usedCodes[code + '-' + seq]) seq++;
+          code = code + '-' + seq;
+        }
+        usedCodes[code] = true;
+
+        if (code !== curQr) updatedCount++;
+        idUpdates.push([finalId]);
+        qrUpdates.push([code]);
+      }
+
+      if (idColIdx !== -1) {
+        sheet.getRange(2, idColIdx + 1, numRows, 1).setNumberFormat('@').setValues(idUpdates);
+      }
+      sheet.getRange(2, qrColIdx + 1, numRows, 1).setNumberFormat('@').setValues(qrUpdates);
+      SpreadsheetApp.flush();
+
+      return {
+        ok: true,
+        totalRows: numRows,
+        updatedCount,
+        missingFeriaCount,
+        missingPuestoCount,
+        byFeria
+      };
+    } finally {
+      lock.releaseLock();
+    }
+  },
+
   _formatSheetDateYmd(val, ssTz) {
     if (!val) return '';
     if (val instanceof Date) {
@@ -783,8 +905,9 @@ const DataService = {
       const feria = this._normalizeFeriaName(payload.feria);
       const chile = this._getChileNowParts();
       const fecha = String(payload.fecha || chile.ymd).trim();
-      const puesto = this._extractPuestoNumber(payload.puesto);
-      if (!feria || !puesto) throw new Error('Feria y N° de puesto (1 al 100) son obligatorios.');
+      const puesto = this._extractPuestoNumber(payload.puesto) || 0;
+      const idFeriante = String(payload.idFeriante || '').trim();
+      if (!feria || (!puesto && !idFeriante)) throw new Error('Feria y N° de puesto (o ID feriante) son obligatorios.');
 
       // Validar cierre diario (tope 17:00 hrs o jornada ya cerrada)
       const closure = this._getFeriaClosureStatus(feria, fecha);
@@ -804,10 +927,15 @@ const DataService = {
       let existingRow = null;
       let idReg = Utilities.getUuid().substring(0, 8).toUpperCase();
       if (lastRow >= 2) {
-        const existingVals = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
+        const existingVals = sheet.getRange(2, 1, lastRow - 1, 6).getValues();
         for (let i = 0; i < existingVals.length; i++) {
           const rFecha = this._formatSheetDateYmd(existingVals[i][1], ssTz);
-          if (rFecha === fecha && Number(existingVals[i][4]) === puesto) {
+          const rPuesto = Number(existingVals[i][4]) || 0;
+          const rId = String(existingVals[i][5] || '').trim();
+          const sameStall = puesto > 0
+            ? (rPuesto === puesto && (!idFeriante || !rId || rId === idFeriante))
+            : (idFeriante && rId === idFeriante);
+          if (rFecha === fecha && sameStall) {
             existingRow = i + 2;
             idReg = existingVals[i][0] || idReg;
             break;

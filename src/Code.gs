@@ -87,6 +87,9 @@ function _handleApiRequest(action, params) {
       case 'toggleFeriaCloseTrigger':
         result = params.enable ? DataService.setupDailyFeriaCloseTrigger() : DataService.removeDailyFeriaCloseTrigger();
         break;
+      case 'ensureFeriantesQr':
+        result = DataService.ensureAllFeriantesQrCodes();
+        break;
       default:
         result = { ok: false, error: 'Acción no reconocida: ' + action };
     }
@@ -126,6 +129,7 @@ function apiSaveFeriaAttendance(payload) { return DataService.saveFeriaAttendanc
 function apiCloseFeriaAttendance(feria, fecha, tipoCierre) { return DataService.closeFeriaAttendanceAndGeneratePdf(feria, fecha, { tipoCierre: tipoCierre || 'CIERRE_MANUAL' }); }
 function apiListFeriaPdfs(feria, limit) { return DataService.listFeriaDailyPdfs(feria, limit); }
 function apiToggleFeriaCloseTrigger(enable) { return enable ? DataService.setupDailyFeriaCloseTrigger() : DataService.removeDailyFeriaCloseTrigger(); }
+function apiEnsureFeriantesQr() { return DataService.ensureAllFeriantesQrCodes(); }
 
 /**
  * Función global invocada por el Trigger diario de las 17:00 hrs Chile
