@@ -920,6 +920,10 @@ var APP_CONFIG = {
     'LOS GUINDOS'
   ],
   FERIA_MAX_PUESTOS: 100,
+  // Horario tope diario para toma de asistencia por feria (17:00 hrs Chile)
+  FERIA_ATTENDANCE_CUTOFF_HOUR: 17,
+  FERIA_ATTENDANCE_CUTOFF_MINUTE: 0,
+  FERIA_PDF_FOLDER_NAME: 'ASISTENCIA FERIAS LIBRES',
 
   // Listado oficial de funcionarios / inspectores (sin entradas de EQUIPO)
   DEFAULT_FUNCIONARIOS: [
@@ -1466,9 +1470,14 @@ var APPSHEET_VIEW_MAP = {
       return out;
     }
 
+    function normFeriaKey(f) {
+      return String(f || '').toUpperCase().replace(/^FERIA\s+/, '').replace(/\s+/g, ' ').trim();
+    }
+
     function getCacheKey(action, payload) {
       if (action === 'rows' || action === 'map') return action + ':' + ((payload && payload.table) || '');
-      if (action === 'feriaAttendance') return action + ':' + ((payload && payload.feria) || '') + ':' + ((payload && payload.fecha) || '');
+      if (action === 'feriaAttendance') return action + ':' + normFeriaKey(payload && payload.feria) + ':' + ((payload && payload.fecha) || '');
+      if (action === 'listFeriaPdfs') return action + ':' + normFeriaKey(payload && payload.feria);
       return action;
     }
 
@@ -1506,7 +1515,15 @@ var APPSHEET_VIEW_MAP = {
         keysToClear.push('map:' + payload.table);
       }
       if (action === 'saveFeriaAttendance' && payload && payload.payload) {
-        keysToClear.push('feriaAttendance:' + (payload.payload.feria || '') + ':' + (payload.payload.fecha || ''));
+        keysToClear.push('feriaAttendance:' + normFeriaKey(payload.payload.feria) + ':' + (payload.payload.fecha || ''));
+      }
+      if (action === 'closeFeriaAttendance' && payload) {
+        keysToClear.push('feriaAttendance:' + normFeriaKey(payload.feria) + ':' + (payload.fecha || ''));
+        keysToClear.push('listFeriaPdfs:' + normFeriaKey(payload.feria));
+        keysToClear.push('listFeriaPdfs:');
+      }
+      if (action === 'toggleFeriaCloseTrigger') {
+        keysToClear.push('bootstrap');
       }
       if (action === 'runExcelBackup' || action === 'toggleDailyBackup') {
         keysToClear.push('listExcelBackups');
@@ -1528,19 +1545,33 @@ var APPSHEET_VIEW_MAP = {
     };
 
     function fetchLiveGasRaw(action, payload) {
-      var isRead = (action === 'bootstrap' || action === 'rows' || action === 'dashboard' || action === 'map' || action === 'listExcelBackups' || action === 'feriaAttendance');
+      var isRead = (action === 'bootstrap' || action === 'rows' || action === 'dashboard' || action === 'map' || action === 'listExcelBackups' || action === 'feriaAttendance' || action === 'listFeriaPdfs');
+      var req;
       if (isRead) {
         var qs = '?action=' + encodeURIComponent(action);
         if (payload && payload.table) qs += '&table=' + encodeURIComponent(payload.table);
         if (payload && payload.feria) qs += '&feria=' + encodeURIComponent(payload.feria);
         if (payload && payload.fecha) qs += '&fecha=' + encodeURIComponent(payload.fecha);
-        return fetch(LIVE_API_URL + qs, { method: 'GET' }).then(function(r) { return r.json(); });
+        if (payload && payload.limit) qs += '&limit=' + encodeURIComponent(payload.limit);
+        req = fetch(LIVE_API_URL + qs, { method: 'GET' });
+      } else {
+        req = fetch(LIVE_API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify(Object.assign({ action: action }, payload || {}))
+        });
       }
-      return fetch(LIVE_API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify(Object.assign({ action: action }, payload || {}))
-      }).then(function(r) { return r.json(); });
+      return req.then(function(r) {
+        return r.text().then(function(txt) {
+          var data;
+          try { data = JSON.parse(txt); }
+          catch (e) { throw new Error('Respuesta no válida del servidor Apps Script (HTTP ' + r.status + ').'); }
+          if (data && data.ok === false && data.error) {
+            throw new Error(data.error);
+          }
+          return data;
+        });
+      });
     }
 
     function scheduleBackgroundPrefetch() {
@@ -1588,7 +1619,7 @@ var APPSHEET_VIEW_MAP = {
     }
 
     function callLiveGas(action, payload) {
-      var isRead = (action === 'bootstrap' || action === 'rows' || action === 'dashboard' || action === 'map' || action === 'listExcelBackups' || action === 'feriaAttendance');
+      var isRead = (action === 'bootstrap' || action === 'rows' || action === 'dashboard' || action === 'map' || action === 'listExcelBackups' || action === 'feriaAttendance' || action === 'listFeriaPdfs');
       if (!isRead) {
         invalidateCacheForWrite(action, payload);
         return fetchLiveGasRaw(action, payload);
@@ -1847,19 +1878,48 @@ var APPSHEET_VIEW_MAP = {
       apiListExcelBackups: function() { return Promise.resolve([]); },
       apiToggleDailyBackup: function(enable) { return Promise.resolve({ ok: true, message: enable ? 'Respaldo diario activado (23:00 hrs).' : 'Respaldo diario desactivado.' }); },
       apiGetFeriaAttendance: function(feria, fecha) {
-        var key = 'inspector_feria_att_v3_' + String(feria || '').toUpperCase() + '_' + String(fecha || '');
+        var fNorm = normFeriaKey(feria);
+        var key = 'inspector_feria_att_v3_' + fNorm + '_' + String(fecha || '');
+        var closeKey = 'inspector_feria_close_v3_' + fNorm + '_' + String(fecha || '');
         var marks = {};
+        var closedRec = null;
         try { marks = JSON.parse(localStorage.getItem(key) || '{}'); } catch(e) {}
-        return Promise.resolve({ feria: feria, fecha: fecha, marks: marks });
+        try { closedRec = JSON.parse(localStorage.getItem(closeKey) || 'null'); } catch(e) {}
+        var now = new Date();
+        var today = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+        var isClosed = Boolean(closedRec || (fecha && fecha < today) || (fecha === today && now.getHours() >= 17));
+        return Promise.resolve({
+          ok: true,
+          feria: fNorm,
+          fecha: fecha,
+          sheetName: ('CONTROL_FERIA_' + fNorm.replace(/[^A-Z0-9]+/g, '_')).substring(0, 31),
+          cutoffHour: 17,
+          closure: {
+            isClosed: isClosed,
+            cutoffHour: 17,
+            closedAt: closedRec ? closedRec.horaCierre : (isClosed ? '17:00:00' : ''),
+            pdfUrl: closedRec ? closedRec.pdfUrl : '',
+            pdfName: closedRec ? closedRec.pdfName : '',
+            autoTriggerEnabled: false
+          },
+          marks: marks
+        });
       },
       apiSaveFeriaAttendance: function(payload) {
-        var feria = String(payload.feria || '').toUpperCase();
-        var fecha = String(payload.fecha || new Date().toISOString().slice(0, 10));
+        var feria = normFeriaKey(payload.feria);
+        var now = new Date();
+        var today = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+        var fecha = String(payload.fecha || today);
+        var closeKey = 'inspector_feria_close_v3_' + feria + '_' + fecha;
+        var closedRec = null;
+        try { closedRec = JSON.parse(localStorage.getItem(closeKey) || 'null'); } catch(e) {}
+        if (closedRec || fecha < today || (fecha === today && now.getHours() >= 17)) {
+          return Promise.reject(new Error('Jornada cerrada para FERIA ' + feria + ' (' + fecha + '). Tope diario: 17:00 hrs.'));
+        }
         var puesto = Number(payload.puesto);
         var key = 'inspector_feria_att_v3_' + feria + '_' + fecha;
         var marks = {};
         try { marks = JSON.parse(localStorage.getItem(key) || '{}'); } catch(e) {}
-        var now = new Date();
         var hora = now.toTimeString().slice(0, 8);
         var mark = {
           idRegistro: (marks[puesto] && marks[puesto].idRegistro) || Math.random().toString(16).slice(2, 10).toUpperCase(),
@@ -1882,7 +1942,27 @@ var APPSHEET_VIEW_MAP = {
         };
         marks[puesto] = mark;
         try { localStorage.setItem(key, JSON.stringify(marks)); } catch(e) {}
-        return Promise.resolve({ ok: true, mark: mark });
+        return Promise.resolve({
+          ok: true,
+          sheetName: ('CONTROL_FERIA_' + feria.replace(/[^A-Z0-9]+/g, '_')).substring(0, 31),
+          mark: mark
+        });
+      },
+      apiCloseFeriaAttendance: function(feria, fecha, tipoCierre) {
+        var fNorm = normFeriaKey(feria);
+        var closeKey = 'inspector_feria_close_v3_' + fNorm + '_' + String(fecha || '');
+        var now = new Date();
+        var rec = { fecha: fecha, feria: fNorm, horaCierre: now.toTimeString().slice(0, 8), tipoCierre: tipoCierre || 'CIERRE_MANUAL', pdfUrl: '', pdfName: '' };
+        try { localStorage.setItem(closeKey, JSON.stringify(rec)); } catch(e) {}
+        return Promise.resolve({
+          ok: true,
+          localPrintFallback: true,
+          closure: { isClosed: true, cutoffHour: 17, closedAt: rec.horaCierre, pdfUrl: '', autoTriggerEnabled: false }
+        });
+      },
+      apiListFeriaPdfs: function() { return Promise.resolve([]); },
+      apiToggleFeriaCloseTrigger: function(enable) {
+        return Promise.resolve({ ok: true, enabled: Boolean(enable), message: enable ? 'Cierre automático 17:00 hrs activado.' : 'Cierre automático desactivado.' });
       }
     };
 
@@ -1898,7 +1978,10 @@ var APPSHEET_VIEW_MAP = {
       apiListExcelBackups: function() { return callLiveGas('listExcelBackups'); },
       apiToggleDailyBackup: function(enable) { return callLiveGas('toggleDailyBackup', { enable: enable }); },
       apiGetFeriaAttendance: function(feria, fecha) { return callLiveGas('feriaAttendance', { feria: feria, fecha: fecha }); },
-      apiSaveFeriaAttendance: function(payload) { return callLiveGas('saveFeriaAttendance', { payload: payload }); }
+      apiSaveFeriaAttendance: function(payload) { return callLiveGas('saveFeriaAttendance', { payload: payload }); },
+      apiCloseFeriaAttendance: function(feria, fecha, tipoCierre) { return callLiveGas('closeFeriaAttendance', { feria: feria, fecha: fecha, tipoCierre: tipoCierre }); },
+      apiListFeriaPdfs: function(feria, limit) { return callLiveGas('listFeriaPdfs', { feria: feria, limit: limit }); },
+      apiToggleFeriaCloseTrigger: function(enable) { return callLiveGas('toggleFeriaCloseTrigger', { enable: enable }); }
     };
 
     function makeRunner(okCb, errCb) {
@@ -1943,7 +2026,7 @@ const App = {
   deferredInstallPrompt: null,
   feriaState: {
     feria: '',
-    fecha: new Date().toISOString().slice(0, 10),
+    fecha: '',
     inspector: '',
     inspectorAcompanante: [],
     filter: 'ALL',
@@ -1951,6 +2034,9 @@ const App = {
     allAsistenciaRows: [],
     stalls: [],
     marks: {},
+    closure: null,
+    sheetName: '',
+    cutoffHour: 17,
     qrScanner: null
   },
 
@@ -3599,6 +3685,33 @@ const App = {
   // ==========================================================================
   // FICHAS DE ASISTENCIA INDEPENDIENTES POR FERIA (PUESTOS 1 AL 100 + QR)
   // ==========================================================================
+  _getTodayLocalISO() {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return y + '-' + m + '-' + day;
+  },
+
+  _normalizeFeriaName(name) {
+    return String(name || '')
+      .toUpperCase()
+      .replace(/^FERIA\s+/, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  },
+
+  _isFeriaClosedLocally() {
+    const st = this.feriaState;
+    if (st.closure && st.closure.isClosed) return true;
+    const today = this._getTodayLocalISO();
+    const fecha = st.fecha || today;
+    if (fecha < today) return true;
+    const cutoffH = Number(st.cutoffHour || 17);
+    if (fecha === today && new Date().getHours() >= cutoffH) return true;
+    return false;
+  },
+
   _extractPuestoNumber(raw) {
     if (raw === undefined || raw === null) return null;
     const m = String(raw).match(/\d+/);
@@ -3661,16 +3774,16 @@ const App = {
   },
 
   renderFeriaFicha(feriaName) {
-    const feria = String(feriaName || 'MODELO').trim().toUpperCase();
+    const feria = this._normalizeFeriaName(feriaName || 'MODELO');
     this.feriaState.feria = feria;
-    if (!this.feriaState.fecha) this.feriaState.fecha = new Date().toISOString().slice(0, 10);
+    if (!this.feriaState.fecha) this.feriaState.fecha = this._getTodayLocalISO();
 
     this.showLoader('Cargando ficha independiente de Feria ' + feria + '...');
 
     const loadAttendance = () => {
       // Construir puestos 1 al 100 estrictamente para ESTA feria
       const rowsFeria = (this.feriaState.allAsistenciaRows || []).filter(
-        r => String(r['FERIA'] || '').trim().toUpperCase() === feria
+        r => this._normalizeFeriaName(r['FERIA']) === feria
       );
       const byPuesto = {};
       rowsFeria.forEach(r => {
@@ -3692,14 +3805,25 @@ const App = {
       google.script.run
         .withSuccessHandler(res => {
           this.hideLoader();
+          if (res && res.ok === false) {
+            this.feriaState.marks = {};
+            this.feriaState.closure = null;
+            this._paintFeriaFicha();
+            this.toast('Aviso asistencia: ' + (res.error || 'No se pudo leer la hoja'));
+            return;
+          }
           this.feriaState.marks = (res && res.marks) || {};
+          this.feriaState.closure = (res && res.closure) || null;
+          this.feriaState.sheetName = (res && res.sheetName) || ('CONTROL_FERIA_' + feria.replace(/[^A-Z0-9]+/g, '_')).substring(0, 31);
+          this.feriaState.cutoffHour = (res && res.cutoffHour) || 17;
           this._paintFeriaFicha();
         })
         .withFailureHandler(err => {
           this.hideLoader();
           this.feriaState.marks = {};
+          this.feriaState.closure = null;
           this._paintFeriaFicha();
-          this.toast('Aviso asistencia: ' + err.message);
+          this.toast('Aviso asistencia: ' + (err && err.message ? err.message : err));
         })
         .apiGetFeriaAttendance(feria, this.feriaState.fecha);
     };
@@ -3785,13 +3909,51 @@ const App = {
       return true;
     });
 
+    const isClosed = this._isFeriaClosedLocally();
+    const closure = st.closure || {};
+    const cutoffH = Number(st.cutoffHour || 17);
+    const cutoffLabel = String(cutoffH).padStart(2, '0') + ':00 hrs';
+    const autoCloseOn = Boolean(closure.autoTriggerEnabled || (this.boot && this.boot.dailyFeriaCloseEnabled));
+
     let html = '<div class="section-header">' +
       '<h2>FERIA ' + this.esc(st.feria) + ' — Ficha de Asistencia (1 al 100)</h2>' +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
-      '<button class="btn btn-primary btn-sm" onclick="App.openQrScannerModal()"><span class="material-icons" style="font-size:16px;">qr_code_scanner</span> Escanear QR (Cámara / Foto)</button>' +
+      '<button class="btn btn-primary btn-sm"' + (isClosed ? ' disabled style="opacity:0.55;cursor:not-allowed;" title="Jornada cerrada (tope ' + cutoffLabel + ')"' : '') + ' onclick="App.openQrScannerModal()"><span class="material-icons" style="font-size:16px;">qr_code_scanner</span> Escanear QR (Cámara / Foto)</button>' +
       '<button class="btn btn-outline btn-sm" onclick="App.printFeriaQrBatch()"><span class="material-icons" style="font-size:16px;">print</span> Imprimir QRs Feria</button>' +
       '<button class="btn btn-success btn-sm" onclick="App.exportFeriaAttendanceXLSX()"><span class="material-icons" style="font-size:16px;">table_view</span> Excel Asistencia (.xlsx)</button>' +
+      '<button class="btn btn-outline btn-sm" onclick="App.openFeriaPdfHistoryModal()"><span class="material-icons" style="font-size:16px;">picture_as_pdf</span> Historial PDFs Diarios</button>' +
       '</div></div>';
+
+    // Banner de estado de jornada (tope 17:00 hrs + Reporte PDF Diario Individual)
+    if (isClosed) {
+      html += '<div class="card" style="padding:12px 14px;margin-bottom:14px;border-left:5px solid #b54708;background:#fffaf0;">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">' +
+        '<div>' +
+          '<div style="font-weight:700;color:#b54708;font-size:13.5px;">🔒 JORNADA CERRADA — FERIA ' + this.esc(st.feria) + ' (' + this.esc(st.fecha) + ')</div>' +
+          '<div style="font-size:12px;color:#7a2e0e;margin-top:2px;">Tope diario de toma de asistencia: <strong>' + cutoffLabel + '</strong>. Hoja Excel: <code>' + this.esc(st.sheetName || ('CONTROL_FERIA_' + st.feria)) + '</code>.' +
+          (closure.closedAt ? ' Cierre registrado: <strong>' + this.esc(closure.closedAt) + '</strong>.' : '') + '</div>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+          (closure.pdfUrl
+            ? '<a class="btn btn-primary btn-sm" href="' + this.esc(closure.pdfUrl) + '" target="_blank"><span class="material-icons" style="font-size:16px;">picture_as_pdf</span> Abrir Reporte PDF Diario</a>' +
+              '<button class="btn btn-outline btn-sm" onclick="App.closeFeriaAndGeneratePdf(true)"><span class="material-icons" style="font-size:16px;">refresh</span> Regenerar PDF</button>'
+            : '<button class="btn btn-primary btn-sm" onclick="App.closeFeriaAndGeneratePdf(false)"><span class="material-icons" style="font-size:16px;">picture_as_pdf</span> Generar Reporte PDF Diario</button>') +
+        '</div>' +
+        '</div></div>';
+    } else {
+      html += '<div class="card" style="padding:12px 14px;margin-bottom:14px;border-left:5px solid var(--success);background:#f3fbf7;">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">' +
+        '<div>' +
+          '<div style="font-weight:700;color:var(--success);font-size:13.5px;">🟢 JORNADA ABIERTA — Tope de toma de asistencia: ' + cutoffLabel + '</div>' +
+          '<div style="font-size:12px;color:#344054;margin-top:2px;">Las marcas QR y manuales se guardan en tiempo real en la hoja Excel <code>' + this.esc(st.sheetName || ('CONTROL_FERIA_' + st.feria)) + '</code>. A las <strong>' + cutoffLabel + '</strong> se cierra el proceso del día y se crea el reporte PDF individual.</div>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">' +
+          '<button class="btn btn-outline btn-sm" onclick="App.toggleDailyFeriaCloseTrigger(' + (!autoCloseOn) + ')" title="Programar cierre automático diario a las 17:00 hrs">' +
+          '<span class="material-icons" style="font-size:16px;">schedule</span> Auto PDF 17:00: <strong>' + (autoCloseOn ? 'ACTIVO' : 'ACTIVAR') + '</strong></button>' +
+          '<button class="btn btn-primary btn-sm" onclick="App.closeFeriaAndGeneratePdf(false)"><span class="material-icons" style="font-size:16px;">lock_clock</span> Cerrar Jornada y Crear PDF</button>' +
+        '</div>' +
+        '</div></div>';
+    }
 
     // Barra de fecha e inspectores
     html += '<div class="card" style="padding:12px 14px;margin-bottom:14px;">' +
@@ -3839,6 +4001,8 @@ const App = {
           this.esc(m.hora || '') + '</div>'
         : '';
 
+      const disAttr = isClosed ? ' disabled style="opacity:0.5;cursor:not-allowed;"' : '';
+
       if (r) {
         const patCls = String(r['PATENTE'] || '').toUpperCase().indexOf('SI') !== -1 ? 'badge-green' : 'badge-red';
         html += '<tr>' +
@@ -3849,8 +4013,8 @@ const App = {
           '<td><span class="badge ' + patCls + '">' + this.esc(r['PATENTE'] || '-') + '</span><div style="font-size:11px;color:var(--muted);">' + this.esc(r['GIRO'] || '') + '</div></td>' +
           '<td>' + (r['UBICACION'] ? '<a href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(r['UBICACION']) + '" target="_blank" style="color:var(--accent);font-size:12px;">📍 GPS ↗</a>' : '<span style="color:var(--muted);font-size:12px;">Sin GPS</span>') + '</td>' +
           '<td style="white-space:nowrap;">' +
-            '<button class="att-btn asiste' + (isAsiste ? ' active' : '') + '" onclick="App.markFeriaAttendance(' + s.puesto + ',\'ASISTE\',\'MANUAL\')">✓ Asiste</button> ' +
-            '<button class="att-btn no-asiste' + (isNoAsiste ? ' active' : '') + '" onclick="App.markFeriaAttendance(' + s.puesto + ',\'NO ASISTE\',\'MANUAL\')">✕ No Asiste</button>' +
+            '<button class="att-btn asiste' + (isAsiste ? ' active' : '') + '"' + disAttr + ' onclick="App.markFeriaAttendance(' + s.puesto + ',\'ASISTE\',\'MANUAL\')">✓ Asiste</button> ' +
+            '<button class="att-btn no-asiste' + (isNoAsiste ? ' active' : '') + '"' + disAttr + ' onclick="App.markFeriaAttendance(' + s.puesto + ',\'NO ASISTE\',\'MANUAL\')">✕ No Asiste</button>' +
             statusInfo +
           '</td>' +
           '<td style="white-space:nowrap;">' +
@@ -3862,8 +4026,8 @@ const App = {
           '<td><span class="puesto-num-badge empty">#' + s.puesto + '</span></td>' +
           '<td colspan="4" style="color:var(--muted);font-style:italic;">Puesto #' + s.puesto + ' disponible / sin feriante asignado en ' + this.esc(st.feria) + '</td>' +
           '<td style="white-space:nowrap;">' +
-            '<button class="att-btn asiste' + (isAsiste ? ' active' : '') + '" onclick="App.markFeriaAttendance(' + s.puesto + ',\'ASISTE\',\'MANUAL\')">✓ Asiste</button> ' +
-            '<button class="att-btn no-asiste' + (isNoAsiste ? ' active' : '') + '" onclick="App.markFeriaAttendance(' + s.puesto + ',\'NO ASISTE\',\'MANUAL\')">✕ No Asiste</button>' +
+            '<button class="att-btn asiste' + (isAsiste ? ' active' : '') + '"' + disAttr + ' onclick="App.markFeriaAttendance(' + s.puesto + ',\'ASISTE\',\'MANUAL\')">✓ Asiste</button> ' +
+            '<button class="att-btn no-asiste' + (isNoAsiste ? ' active' : '') + '"' + disAttr + ' onclick="App.markFeriaAttendance(' + s.puesto + ',\'NO ASISTE\',\'MANUAL\')">✕ No Asiste</button>' +
             statusInfo +
           '</td>' +
           '<td style="white-space:nowrap;">' +
@@ -3892,17 +4056,33 @@ const App = {
     ).map(c => c.value);
   },
 
-  markFeriaAttendance(puestoNum, estado, medio) {
+  markFeriaAttendance(puestoNum, estado, medio, onDone) {
     const st = this.feriaState;
-    const stall = st.stalls.find(s => s.puesto === Number(puestoNum));
+    const num = this._extractPuestoNumber(puestoNum);
+    if (!num) {
+      const err = new Error('Número de puesto inválido: ' + puestoNum);
+      this.toast(err.message);
+      if (typeof onDone === 'function') onDone(err, null);
+      return;
+    }
+
+    if (this._isFeriaClosedLocally()) {
+      const cutoffLabel = String(st.cutoffHour || 17).padStart(2, '0') + ':00 hrs';
+      const err = new Error('Jornada cerrada para Feria ' + st.feria + ' (' + st.fecha + '). Tope diario: ' + cutoffLabel + '.');
+      this.toast(err.message);
+      if (typeof onDone === 'function') onDone(err, null);
+      return;
+    }
+
+    const stall = st.stalls.find(s => s.puesto === num);
     const r = stall && stall.record ? stall.record : {};
 
     const payload = {
       feria: st.feria,
-      fecha: st.fecha,
-      puesto: Number(puestoNum),
+      fecha: st.fecha || this._getTodayLocalISO(),
+      puesto: num,
       idFeriante: r['ID'] || '',
-      nombre: r['NOMBRE DUEÑO'] || ('PUESTO #' + puestoNum),
+      nombre: r['NOMBRE DUEÑO'] || ('PUESTO #' + num),
       rut: r['RUT DUEÑO'] || '',
       rol: r['ROL'] || '',
       patente: r['PATENTE'] || '',
@@ -3917,13 +4097,24 @@ const App = {
 
     google.script.run
       .withSuccessHandler(res => {
-        if (res && res.mark) {
-          st.marks[Number(puestoNum)] = res.mark;
-          this._paintFeriaFicha();
-          this.toast('Feria ' + st.feria + ' — Puesto #' + puestoNum + ': ' + estado + ' (' + payload.medio + ')');
+        if (!res || res.ok === false || !res.mark) {
+          const msg = (res && res.error) ? res.error : 'El servidor no confirmó el guardado en Excel.';
+          const err = new Error(msg);
+          this.toast('Error registrando asistencia: ' + msg);
+          if (typeof onDone === 'function') onDone(err, null);
+          return;
         }
+        st.marks[num] = res.mark;
+        if (res.sheetName) st.sheetName = res.sheetName;
+        this._paintFeriaFicha();
+        this.toast('✅ Guardado en Excel (' + (res.sheetName || st.sheetName || st.feria) + ') — Puesto #' + num + ': ' + estado + ' (' + payload.medio + ')');
+        if (typeof onDone === 'function') onDone(null, res);
       })
-      .withFailureHandler(err => this.toast('Error registrando asistencia: ' + err.message))
+      .withFailureHandler(err => {
+        const msg = (err && err.message) ? err.message : String(err || 'Error de conexión');
+        this.toast('Error registrando asistencia: ' + msg);
+        if (typeof onDone === 'function') onDone(new Error(msg), null);
+      })
       .apiSaveFeriaAttendance(payload);
   },
 
@@ -4160,6 +4351,11 @@ const App = {
   // ESCÁNER QR POR CÁMARA EN VIVO Y POR FOTOGRAFÍA
   // ==========================================================================
   openQrScannerModal() {
+    if (this._isFeriaClosedLocally()) {
+      const cutoffLabel = String(this.feriaState.cutoffHour || 17).padStart(2, '0') + ':00 hrs';
+      this.toast('Jornada cerrada para Feria ' + this.feriaState.feria + ' (tope ' + cutoffLabel + ').');
+      return;
+    }
     document.getElementById('modalTitle').textContent = 'Tomar Asistencia por QR — Feria ' + this.feriaState.feria;
     document.getElementById('modalBody').innerHTML =
       '<div style="text-align:center;">' +
@@ -4228,38 +4424,198 @@ const App = {
     let data = null;
     try { data = JSON.parse(decodedText); } catch (e) {}
 
-    if (!data || !data.feria || !data.puesto) {
+    const puestoNum = data ? this._extractPuestoNumber(data.puesto) : null;
+    if (!data || !data.feria || !puestoNum) {
       document.getElementById('qrScanResultBox').innerHTML =
         '<div class="card" style="border-left:4px solid var(--danger);text-align:left;"><strong>QR no reconocido</strong><br><small>' + this.esc(decodedText) + '</small></div>';
       return;
     }
 
-    const qrFeria = String(data.feria).toUpperCase().trim();
-    const currentFeria = this.feriaState.feria;
+    const qrFeria = this._normalizeFeriaName(data.feria);
+    const currentFeria = this._normalizeFeriaName(this.feriaState.feria);
     const isSameFeria = qrFeria === currentFeria;
 
-    let warningHtml = '';
-    if (!isSameFeria) {
-      warningHtml = '<div style="background:#fffaeb;border:1px solid #fedf89;color:#b54708;padding:10px;border-radius:8px;margin-bottom:10px;font-size:13px;">' +
-        '⚠️ Este código QR corresponde a <strong>FERIA ' + this.esc(qrFeria) + ' (Puesto #' + data.puesto + ')</strong>, no a Feria ' + this.esc(currentFeria) + '. Las ferias son independientes.' +
-        '<div style="margin-top:8px;"><button class="btn btn-primary btn-sm" onclick="App.closeModal();App.navigate({kind:\'feriaFicha\',feria:\'' + this.escJs(qrFeria) + '\',title:\'Feria ' + this.escJs(qrFeria) + ' (1-100)\'})">Ir a Feria ' + this.esc(qrFeria) + '</button></div></div>';
-    } else {
-      // Marcar asistencia automáticamente como ASISTE por medio QR
-      this.markFeriaAttendance(data.puesto, 'ASISTE', 'QR');
-    }
-
-    document.getElementById('qrScanResultBox').innerHTML =
-      warningHtml +
-      '<div class="card" style="border-left:5px solid ' + (isSameFeria ? 'var(--success)' : 'var(--warning)') + ';text-align:left;">' +
-      '<div style="font-size:15px;font-weight:700;color:' + (isSameFeria ? 'var(--success)' : 'var(--primary)') + ';">' +
-      (isSameFeria ? '✅ ASISTENCIA REGISTRADA POR QR' : '📋 DATOS DEL CÓDIGO QR') + '</div>' +
-      '<div style="margin-top:8px;font-size:13px;line-height:1.6;">' +
-      '<strong>Feria:</strong> ' + this.esc(qrFeria) + ' &nbsp;|&nbsp; <strong>Puesto:</strong> #' + this.esc(data.puesto) + '<br>' +
+    const metaHtml = '<div style="margin-top:8px;font-size:13px;line-height:1.6;">' +
+      '<strong>Feria:</strong> ' + this.esc(qrFeria) + ' &nbsp;|&nbsp; <strong>Puesto:</strong> #' + this.esc(puestoNum) + '<br>' +
       '<strong>Titular:</strong> ' + this.esc(data.nombre || '-') + '<br>' +
       '<strong>RUT:</strong> ' + this.esc(data.rut || '-') + ' &nbsp;|&nbsp; <strong>ROL:</strong> ' + this.esc(data.rol || '-') + '<br>' +
       '<strong>Patente:</strong> ' + this.esc(data.patente || '-') + ' &nbsp;|&nbsp; <strong>Giro:</strong> ' + this.esc(data.giro || '-') + '<br>' +
       '<strong>Ubicación GPS:</strong> ' + this.esc(data.ubicacion || '-') +
-      '</div></div>';
+      '</div>';
+
+    if (!isSameFeria) {
+      const warningHtml = '<div style="background:#fffaeb;border:1px solid #fedf89;color:#b54708;padding:10px;border-radius:8px;margin-bottom:10px;font-size:13px;">' +
+        '⚠️ Este código QR corresponde a <strong>FERIA ' + this.esc(qrFeria) + ' (Puesto #' + puestoNum + ')</strong>, no a Feria ' + this.esc(currentFeria) + '. Las ferias son independientes.' +
+        '<div style="margin-top:8px;"><button class="btn btn-primary btn-sm" onclick="App.closeModal();App.navigate({kind:\'feriaFicha\',feria:\'' + this.escJs(qrFeria) + '\',title:\'Feria ' + this.escJs(qrFeria) + ' (1-100)\'})">Ir a Feria ' + this.esc(qrFeria) + '</button></div></div>';
+      document.getElementById('qrScanResultBox').innerHTML =
+        warningHtml +
+        '<div class="card" style="border-left:5px solid var(--warning);text-align:left;">' +
+        '<div style="font-size:15px;font-weight:700;color:var(--primary);">📋 DATOS DEL CÓDIGO QR (NO REGISTRADO EN ESTA FERIA)</div>' +
+        metaHtml + '</div>';
+      return;
+    }
+
+    // Mostrar estado de guardado mientras se confirma la escritura real en Excel / Google Sheets
+    const resultBox = document.getElementById('qrScanResultBox');
+    if (resultBox) {
+      resultBox.innerHTML =
+        '<div class="card" style="border-left:5px solid var(--accent);text-align:left;">' +
+        '<div style="font-size:15px;font-weight:700;color:var(--accent);">⏳ GUARDANDO ASISTENCIA EN EXCEL (GOOGLE SHEETS)...</div>' +
+        metaHtml + '</div>';
+    }
+
+    this.markFeriaAttendance(puestoNum, 'ASISTE', 'QR', (err, res) => {
+      const box = document.getElementById('qrScanResultBox');
+      if (!box) return;
+      if (err) {
+        box.innerHTML =
+          '<div class="card" style="border-left:5px solid var(--danger);text-align:left;">' +
+          '<div style="font-size:15px;font-weight:700;color:var(--danger);">❌ NO SE PUDO GUARDAR EN EXCEL</div>' +
+          '<div style="margin-top:6px;font-size:13px;color:#b42318;">' + this.esc(err.message) + '</div>' +
+          metaHtml +
+          '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">' +
+          '<button class="btn btn-primary btn-sm" onclick="App.handleDecodedQr(\'' + this.escJs(decodedText) + '\')">🔄 Reintentar guardar</button>' +
+          '<button class="btn btn-outline btn-sm" onclick="App.startLiveQrCamera()">📷 Escanear otro QR</button>' +
+          '</div></div>';
+        return;
+      }
+
+      const sheetLabel = (res && res.sheetName) ? res.sheetName : (this.feriaState.sheetName || ('CONTROL_FERIA_' + qrFeria));
+      const rowInfo = (res && res.rowNumber) ? (' · Fila #' + res.rowNumber) : '';
+      const horaInfo = (res && res.mark && res.mark.hora) ? (' · ' + res.mark.hora) : '';
+      box.innerHTML =
+        '<div class="card" style="border-left:5px solid var(--success);text-align:left;">' +
+        '<div style="font-size:15px;font-weight:700;color:var(--success);">✅ ASISTENCIA REGISTRADA Y GUARDADA EN EXCEL</div>' +
+        '<div style="margin-top:4px;font-size:12px;color:#12805c;">Hoja: <strong>' + this.esc(sheetLabel) + '</strong>' + this.esc(rowInfo + horaInfo) + '</div>' +
+        metaHtml +
+        '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">' +
+        '<button class="btn btn-primary btn-sm" onclick="App.startLiveQrCamera()"><span class="material-icons" style="font-size:15px;">qr_code_scanner</span> Escanear siguiente QR</button>' +
+        '<button class="btn btn-outline btn-sm" onclick="App.closeModal()">Cerrar</button>' +
+        '</div></div>';
+    });
+  },
+
+  closeFeriaAndGeneratePdf(forceRegenerate) {
+    const st = this.feriaState;
+    const marksCount = Object.keys(st.marks || {}).length;
+    const msg = forceRegenerate
+      ? '¿Regenerar el reporte PDF diario individual de FERIA ' + st.feria + ' (' + st.fecha + ')?'
+      : '¿Cerrar la jornada de FERIA ' + st.feria + ' (' + st.fecha + ') con ' + marksCount + ' marca(s) y generar el reporte PDF diario individual?\n\nUna vez cerrada, no se podrán agregar ni modificar asistencias para esta feria y fecha.';
+    if (!confirm(msg)) return;
+
+    this.showLoader('Cerrando jornada y generando PDF diario individual de Feria ' + st.feria + '...');
+    google.script.run
+      .withSuccessHandler(res => {
+        this.hideLoader();
+        if (!res || res.ok === false) {
+          this.toast('Error generando PDF diario: ' + ((res && res.error) || 'Respuesta inválida'));
+          return;
+        }
+        if (res.closure) st.closure = res.closure;
+        this._paintFeriaFicha();
+        if (res.pdf && res.pdf.url) {
+          this.toast('✅ Jornada cerrada y PDF diario creado: ' + (res.pdf.name || 'Reporte PDF'));
+          window.open(res.pdf.url, '_blank');
+        } else if (res.localPrintFallback) {
+          this._openLocalFeriaPdfPrint();
+        } else {
+          this.toast('✅ Jornada cerrada correctamente.');
+        }
+      })
+      .withFailureHandler(err => {
+        this.hideLoader();
+        this.toast('Error cerrando jornada: ' + ((err && err.message) || err));
+      })
+      .apiCloseFeriaAttendance(st.feria, st.fecha, forceRegenerate ? 'REGENERADO_MANUAL' : 'CIERRE_MANUAL');
+  },
+
+  toggleDailyFeriaCloseTrigger(enable) {
+    this.showLoader(enable ? 'Activando cierre automático diario a las 17:00 hrs...' : 'Desactivando cierre automático diario...');
+    google.script.run
+      .withSuccessHandler(res => {
+        this.hideLoader();
+        if (res && res.ok === false) {
+          this.toast('Error: ' + (res.error || 'No se pudo configurar el cierre automático'));
+          return;
+        }
+        if (this.boot) this.boot.dailyFeriaCloseEnabled = Boolean(enable);
+        if (this.feriaState.closure) this.feriaState.closure.autoTriggerEnabled = Boolean(enable);
+        this._paintFeriaFicha();
+        this.toast((res && res.message) || (enable ? 'Cierre automático 17:00 hrs activado.' : 'Cierre automático desactivado.'));
+      })
+      .withFailureHandler(err => {
+        this.hideLoader();
+        this.toast('Error configurando cierre automático: ' + ((err && err.message) || err));
+      })
+      .apiToggleFeriaCloseTrigger(Boolean(enable));
+  },
+
+  openFeriaPdfHistoryModal() {
+    const feria = this.feriaState.feria;
+    document.getElementById('modalTitle').textContent = 'Reportes PDF Diarios — Feria ' + feria;
+    document.getElementById('modalBody').innerHTML = '<div style="padding:18px;text-align:center;color:var(--muted);">Cargando historial de reportes PDF diarios...</div>';
+    document.getElementById('detailModal').classList.add('open');
+
+    google.script.run
+      .withSuccessHandler(list => {
+        const items = Array.isArray(list) ? list : [];
+        if (items.length === 0) {
+          document.getElementById('modalBody').innerHTML =
+            '<div class="card" style="text-align:center;padding:20px;">' +
+            '<div style="font-weight:700;margin-bottom:6px;">Aún no hay reportes PDF diarios para FERIA ' + this.esc(feria) + '</div>' +
+            '<div style="font-size:12.5px;color:var(--muted);">Al cerrar la jornada (tope 17:00 hrs) se genera automáticamente un PDF individual por día y feria en Google Drive.</div>' +
+            '</div>';
+          return;
+        }
+        let html = '<div class="table-wrap"><table class="data-table"><thead><tr>' +
+          '<th>FECHA</th><th>CIERRE</th><th>ASISTEN / NO</th><th>QR</th><th>REPORTE PDF</th>' +
+          '</tr></thead><tbody>';
+        items.forEach(it => {
+          html += '<tr>' +
+            '<td><strong>' + this.esc(it.fecha) + '</strong></td>' +
+            '<td>' + this.esc(it.horaCierre || '-') + '<div style="font-size:11px;color:var(--muted);">' + this.esc(it.tipoCierre || '') + '</div></td>' +
+            '<td><span class="badge badge-green">' + this.esc(it.asisten) + ' ✓</span> <span class="badge badge-red">' + this.esc(it.noAsisten) + ' ✕</span></td>' +
+            '<td><span class="badge badge-blue">' + this.esc(it.porQr) + ' QR</span></td>' +
+            '<td style="white-space:nowrap;">' +
+              '<a class="btn btn-primary btn-sm" href="' + this.esc(it.pdfUrl) + '" target="_blank">📄 Abrir PDF</a> ' +
+              (it.downloadUrl ? '<a class="btn btn-outline btn-sm" href="' + this.esc(it.downloadUrl) + '" target="_blank">⬇️</a>' : '') +
+            '</td></tr>';
+        });
+        html += '</tbody></table></div>';
+        document.getElementById('modalBody').innerHTML = html;
+      })
+      .withFailureHandler(err => {
+        document.getElementById('modalBody').innerHTML = '<div class="card" style="border-left:4px solid var(--danger);">Error cargando historial PDF: ' + this.esc((err && err.message) || err) + '</div>';
+      })
+      .apiListFeriaPdfs(feria, 40);
+  },
+
+  _openLocalFeriaPdfPrint() {
+    const st = this.feriaState;
+    const w = window.open('', '_blank');
+    if (!w) return;
+    let rowsHtml = '';
+    st.stalls.forEach(s => {
+      const r = s.record;
+      const m = st.marks[s.puesto];
+      if (!r && !m) return;
+      rowsHtml += '<tr>' +
+        '<td>#' + s.puesto + '</td>' +
+        '<td>' + this.esc((m && m.nombre) || (r && r['NOMBRE DUEÑO']) || '-') + '</td>' +
+        '<td>' + this.esc((m && m.rut) || (r && r['RUT DUEÑO']) || '-') + '</td>' +
+        '<td>' + this.esc((m && m.rol) || (r && r['ROL']) || '-') + '</td>' +
+        '<td>' + this.esc(m ? m.estado : 'PENDIENTE') + '</td>' +
+        '<td>' + this.esc(m ? m.medio : '-') + '</td>' +
+        '<td>' + this.esc(m ? m.hora : '-') + '</td>' +
+        '<td>' + this.esc(m ? m.inspector : '-') + '</td></tr>';
+    });
+    w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Reporte Diario Asistencia Feria ' + this.esc(st.feria) + ' ' + this.esc(st.fecha) + '</title>' +
+      '<style>body{font-family:Arial,sans-serif;font-size:12px;padding:18px;}h2{color:#0c347d;margin:0 0 4px;}table{width:100%;border-collapse:collapse;margin-top:12px;}th,td{border:1px solid #d7e2f0;padding:6px;text-align:left;}th{background:#0c347d;color:#fff;}</style></head>' +
+      '<body><h2>REPORTE DIARIO INDIVIDUAL DE ASISTENCIA — FERIA ' + this.esc(st.feria) + '</h2>' +
+      '<div>Fecha: <strong>' + this.esc(st.fecha) + '</strong> | Tope de Toma: <strong>17:00 hrs</strong></div>' +
+      '<table><thead><tr><th>Puesto</th><th>Titular</th><th>RUT</th><th>ROL</th><th>Estado</th><th>Medio</th><th>Hora</th><th>Inspector</th></tr></thead><tbody>' +
+      rowsHtml + '</tbody></table><script>window.onload=function(){window.print();};<\/script></body></html>');
+    w.document.close();
   },
 
   exportFeriaAttendanceXLSX() {

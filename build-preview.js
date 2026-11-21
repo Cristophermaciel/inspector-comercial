@@ -61,9 +61,14 @@ if (typeof google === 'undefined' || !google.script) {
       return out;
     }
 
+    function normFeriaKey(f) {
+      return String(f || '').toUpperCase().replace(/^FERIA\\s+/, '').replace(/\\s+/g, ' ').trim();
+    }
+
     function getCacheKey(action, payload) {
       if (action === 'rows' || action === 'map') return action + ':' + ((payload && payload.table) || '');
-      if (action === 'feriaAttendance') return action + ':' + ((payload && payload.feria) || '') + ':' + ((payload && payload.fecha) || '');
+      if (action === 'feriaAttendance') return action + ':' + normFeriaKey(payload && payload.feria) + ':' + ((payload && payload.fecha) || '');
+      if (action === 'listFeriaPdfs') return action + ':' + normFeriaKey(payload && payload.feria);
       return action;
     }
 
@@ -101,7 +106,15 @@ if (typeof google === 'undefined' || !google.script) {
         keysToClear.push('map:' + payload.table);
       }
       if (action === 'saveFeriaAttendance' && payload && payload.payload) {
-        keysToClear.push('feriaAttendance:' + (payload.payload.feria || '') + ':' + (payload.payload.fecha || ''));
+        keysToClear.push('feriaAttendance:' + normFeriaKey(payload.payload.feria) + ':' + (payload.payload.fecha || ''));
+      }
+      if (action === 'closeFeriaAttendance' && payload) {
+        keysToClear.push('feriaAttendance:' + normFeriaKey(payload.feria) + ':' + (payload.fecha || ''));
+        keysToClear.push('listFeriaPdfs:' + normFeriaKey(payload.feria));
+        keysToClear.push('listFeriaPdfs:');
+      }
+      if (action === 'toggleFeriaCloseTrigger') {
+        keysToClear.push('bootstrap');
       }
       if (action === 'runExcelBackup' || action === 'toggleDailyBackup') {
         keysToClear.push('listExcelBackups');
@@ -123,19 +136,33 @@ if (typeof google === 'undefined' || !google.script) {
     };
 
     function fetchLiveGasRaw(action, payload) {
-      var isRead = (action === 'bootstrap' || action === 'rows' || action === 'dashboard' || action === 'map' || action === 'listExcelBackups' || action === 'feriaAttendance');
+      var isRead = (action === 'bootstrap' || action === 'rows' || action === 'dashboard' || action === 'map' || action === 'listExcelBackups' || action === 'feriaAttendance' || action === 'listFeriaPdfs');
+      var req;
       if (isRead) {
         var qs = '?action=' + encodeURIComponent(action);
         if (payload && payload.table) qs += '&table=' + encodeURIComponent(payload.table);
         if (payload && payload.feria) qs += '&feria=' + encodeURIComponent(payload.feria);
         if (payload && payload.fecha) qs += '&fecha=' + encodeURIComponent(payload.fecha);
-        return fetch(LIVE_API_URL + qs, { method: 'GET' }).then(function(r) { return r.json(); });
+        if (payload && payload.limit) qs += '&limit=' + encodeURIComponent(payload.limit);
+        req = fetch(LIVE_API_URL + qs, { method: 'GET' });
+      } else {
+        req = fetch(LIVE_API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify(Object.assign({ action: action }, payload || {}))
+        });
       }
-      return fetch(LIVE_API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify(Object.assign({ action: action }, payload || {}))
-      }).then(function(r) { return r.json(); });
+      return req.then(function(r) {
+        return r.text().then(function(txt) {
+          var data;
+          try { data = JSON.parse(txt); }
+          catch (e) { throw new Error('Respuesta no válida del servidor Apps Script (HTTP ' + r.status + ').'); }
+          if (data && data.ok === false && data.error) {
+            throw new Error(data.error);
+          }
+          return data;
+        });
+      });
     }
 
     function scheduleBackgroundPrefetch() {
@@ -183,7 +210,7 @@ if (typeof google === 'undefined' || !google.script) {
     }
 
     function callLiveGas(action, payload) {
-      var isRead = (action === 'bootstrap' || action === 'rows' || action === 'dashboard' || action === 'map' || action === 'listExcelBackups' || action === 'feriaAttendance');
+      var isRead = (action === 'bootstrap' || action === 'rows' || action === 'dashboard' || action === 'map' || action === 'listExcelBackups' || action === 'feriaAttendance' || action === 'listFeriaPdfs');
       if (!isRead) {
         invalidateCacheForWrite(action, payload);
         return fetchLiveGasRaw(action, payload);
@@ -442,19 +469,48 @@ if (typeof google === 'undefined' || !google.script) {
       apiListExcelBackups: function() { return Promise.resolve([]); },
       apiToggleDailyBackup: function(enable) { return Promise.resolve({ ok: true, message: enable ? 'Respaldo diario activado (23:00 hrs).' : 'Respaldo diario desactivado.' }); },
       apiGetFeriaAttendance: function(feria, fecha) {
-        var key = 'inspector_feria_att_v3_' + String(feria || '').toUpperCase() + '_' + String(fecha || '');
+        var fNorm = normFeriaKey(feria);
+        var key = 'inspector_feria_att_v3_' + fNorm + '_' + String(fecha || '');
+        var closeKey = 'inspector_feria_close_v3_' + fNorm + '_' + String(fecha || '');
         var marks = {};
+        var closedRec = null;
         try { marks = JSON.parse(localStorage.getItem(key) || '{}'); } catch(e) {}
-        return Promise.resolve({ feria: feria, fecha: fecha, marks: marks });
+        try { closedRec = JSON.parse(localStorage.getItem(closeKey) || 'null'); } catch(e) {}
+        var now = new Date();
+        var today = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+        var isClosed = Boolean(closedRec || (fecha && fecha < today) || (fecha === today && now.getHours() >= 17));
+        return Promise.resolve({
+          ok: true,
+          feria: fNorm,
+          fecha: fecha,
+          sheetName: ('CONTROL_FERIA_' + fNorm.replace(/[^A-Z0-9]+/g, '_')).substring(0, 31),
+          cutoffHour: 17,
+          closure: {
+            isClosed: isClosed,
+            cutoffHour: 17,
+            closedAt: closedRec ? closedRec.horaCierre : (isClosed ? '17:00:00' : ''),
+            pdfUrl: closedRec ? closedRec.pdfUrl : '',
+            pdfName: closedRec ? closedRec.pdfName : '',
+            autoTriggerEnabled: false
+          },
+          marks: marks
+        });
       },
       apiSaveFeriaAttendance: function(payload) {
-        var feria = String(payload.feria || '').toUpperCase();
-        var fecha = String(payload.fecha || new Date().toISOString().slice(0, 10));
+        var feria = normFeriaKey(payload.feria);
+        var now = new Date();
+        var today = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+        var fecha = String(payload.fecha || today);
+        var closeKey = 'inspector_feria_close_v3_' + feria + '_' + fecha;
+        var closedRec = null;
+        try { closedRec = JSON.parse(localStorage.getItem(closeKey) || 'null'); } catch(e) {}
+        if (closedRec || fecha < today || (fecha === today && now.getHours() >= 17)) {
+          return Promise.reject(new Error('Jornada cerrada para FERIA ' + feria + ' (' + fecha + '). Tope diario: 17:00 hrs.'));
+        }
         var puesto = Number(payload.puesto);
         var key = 'inspector_feria_att_v3_' + feria + '_' + fecha;
         var marks = {};
         try { marks = JSON.parse(localStorage.getItem(key) || '{}'); } catch(e) {}
-        var now = new Date();
         var hora = now.toTimeString().slice(0, 8);
         var mark = {
           idRegistro: (marks[puesto] && marks[puesto].idRegistro) || Math.random().toString(16).slice(2, 10).toUpperCase(),
@@ -477,7 +533,27 @@ if (typeof google === 'undefined' || !google.script) {
         };
         marks[puesto] = mark;
         try { localStorage.setItem(key, JSON.stringify(marks)); } catch(e) {}
-        return Promise.resolve({ ok: true, mark: mark });
+        return Promise.resolve({
+          ok: true,
+          sheetName: ('CONTROL_FERIA_' + feria.replace(/[^A-Z0-9]+/g, '_')).substring(0, 31),
+          mark: mark
+        });
+      },
+      apiCloseFeriaAttendance: function(feria, fecha, tipoCierre) {
+        var fNorm = normFeriaKey(feria);
+        var closeKey = 'inspector_feria_close_v3_' + fNorm + '_' + String(fecha || '');
+        var now = new Date();
+        var rec = { fecha: fecha, feria: fNorm, horaCierre: now.toTimeString().slice(0, 8), tipoCierre: tipoCierre || 'CIERRE_MANUAL', pdfUrl: '', pdfName: '' };
+        try { localStorage.setItem(closeKey, JSON.stringify(rec)); } catch(e) {}
+        return Promise.resolve({
+          ok: true,
+          localPrintFallback: true,
+          closure: { isClosed: true, cutoffHour: 17, closedAt: rec.horaCierre, pdfUrl: '', autoTriggerEnabled: false }
+        });
+      },
+      apiListFeriaPdfs: function() { return Promise.resolve([]); },
+      apiToggleFeriaCloseTrigger: function(enable) {
+        return Promise.resolve({ ok: true, enabled: Boolean(enable), message: enable ? 'Cierre automático 17:00 hrs activado.' : 'Cierre automático desactivado.' });
       }
     };
 
@@ -493,7 +569,10 @@ if (typeof google === 'undefined' || !google.script) {
       apiListExcelBackups: function() { return callLiveGas('listExcelBackups'); },
       apiToggleDailyBackup: function(enable) { return callLiveGas('toggleDailyBackup', { enable: enable }); },
       apiGetFeriaAttendance: function(feria, fecha) { return callLiveGas('feriaAttendance', { feria: feria, fecha: fecha }); },
-      apiSaveFeriaAttendance: function(payload) { return callLiveGas('saveFeriaAttendance', { payload: payload }); }
+      apiSaveFeriaAttendance: function(payload) { return callLiveGas('saveFeriaAttendance', { payload: payload }); },
+      apiCloseFeriaAttendance: function(feria, fecha, tipoCierre) { return callLiveGas('closeFeriaAttendance', { feria: feria, fecha: fecha, tipoCierre: tipoCierre }); },
+      apiListFeriaPdfs: function(feria, limit) { return callLiveGas('listFeriaPdfs', { feria: feria, limit: limit }); },
+      apiToggleFeriaCloseTrigger: function(enable) { return callLiveGas('toggleFeriaCloseTrigger', { enable: enable }); }
     };
 
     function makeRunner(okCb, errCb) {
