@@ -69,6 +69,7 @@ if (typeof google === 'undefined' || !google.script) {
       if (action === 'rows' || action === 'map') return action + ':' + ((payload && payload.table) || '');
       if (action === 'feriaAttendance') return action + ':' + normFeriaKey(payload && payload.feria) + ':' + ((payload && payload.fecha) || '');
       if (action === 'listFeriaPdfs') return action + ':' + normFeriaKey(payload && payload.feria);
+      if (action === 'annualStats') return action + ':' + ((payload && payload.year) || '');
       return action;
     }
 
@@ -119,6 +120,10 @@ if (typeof google === 'undefined' || !google.script) {
       if (action === 'ensureFeriantesQr') {
         keysToClear.push('rows:ASISTENCIA');
       }
+      if (action === 'executeYearClose') {
+        window.__clearInspectorLiveCache();
+        return;
+      }
       if (action === 'runExcelBackup' || action === 'toggleDailyBackup') {
         keysToClear.push('listExcelBackups');
         keysToClear.push('bootstrap');
@@ -139,7 +144,7 @@ if (typeof google === 'undefined' || !google.script) {
     };
 
     function fetchLiveGasRaw(action, payload) {
-      var isRead = (action === 'bootstrap' || action === 'rows' || action === 'dashboard' || action === 'map' || action === 'listExcelBackups' || action === 'feriaAttendance' || action === 'listFeriaPdfs');
+      var isRead = (action === 'bootstrap' || action === 'rows' || action === 'dashboard' || action === 'map' || action === 'listExcelBackups' || action === 'feriaAttendance' || action === 'listFeriaPdfs' || action === 'annualStats' || action === 'listAnnualClosures');
       var req;
       if (isRead) {
         var qs = '?action=' + encodeURIComponent(action);
@@ -147,6 +152,7 @@ if (typeof google === 'undefined' || !google.script) {
         if (payload && payload.feria) qs += '&feria=' + encodeURIComponent(payload.feria);
         if (payload && payload.fecha) qs += '&fecha=' + encodeURIComponent(payload.fecha);
         if (payload && payload.limit) qs += '&limit=' + encodeURIComponent(payload.limit);
+        if (payload && payload.year) qs += '&year=' + encodeURIComponent(payload.year);
         req = fetch(LIVE_API_URL + qs, { method: 'GET' });
       } else {
         req = fetch(LIVE_API_URL, {
@@ -213,7 +219,7 @@ if (typeof google === 'undefined' || !google.script) {
     }
 
     function callLiveGas(action, payload) {
-      var isRead = (action === 'bootstrap' || action === 'rows' || action === 'dashboard' || action === 'map' || action === 'listExcelBackups' || action === 'feriaAttendance' || action === 'listFeriaPdfs');
+      var isRead = (action === 'bootstrap' || action === 'rows' || action === 'dashboard' || action === 'map' || action === 'listExcelBackups' || action === 'feriaAttendance' || action === 'listFeriaPdfs' || action === 'annualStats' || action === 'listAnnualClosures');
       if (!isRead) {
         invalidateCacheForWrite(action, payload);
         return fetchLiveGasRaw(action, payload);
@@ -563,7 +569,29 @@ if (typeof google === 'undefined' || !google.script) {
           var rows = getMergedRows(db, 'ASISTENCIA');
           return { ok: true, totalRows: rows.length, updatedCount: rows.length };
         });
-      }
+      },
+      apiGetAnnualBalanceStats: function(year) {
+        return localServer.apiGetDashboardStats().then(function(ds) {
+          var k = ds.kpis || {};
+          return {
+            ok: true,
+            year: Number(year) || new Date().getFullYear(),
+            kpis: Object.assign({
+              totalProcedimientos: (k.totalComercio || 0) + (k.totalFueraHora || 0) + (k.totalPublicidad || 0) + (k.totalMoraCount || 0) + (k.totalReportes || 0) + (k.totalNotificaciones || 0),
+              totalAsistenciasFerias: 0,
+              totalAsistenciasQr: 0,
+              totalSemanaPenaflorina: 0
+            }, k),
+            monthly: [],
+            byInspector: [],
+            feriasBreakdown: [],
+            history: []
+          };
+        });
+      },
+      apiGenerateAnnualBalancePdf: function() { return Promise.reject(new Error('Conecta Google Apps Script en vivo para generar el PDF Balance Anual en Drive.')); },
+      apiExecuteYearClose: function() { return Promise.reject(new Error('Conecta Google Apps Script en vivo para ejecutar el Cierre de Año en Drive y Google Sheets.')); },
+      apiListAnnualClosures: function() { return Promise.resolve([]); }
     };
 
     var LIVE_MAP = {
@@ -582,7 +610,11 @@ if (typeof google === 'undefined' || !google.script) {
       apiCloseFeriaAttendance: function(feria, fecha, tipoCierre) { return callLiveGas('closeFeriaAttendance', { feria: feria, fecha: fecha, tipoCierre: tipoCierre }); },
       apiListFeriaPdfs: function(feria, limit) { return callLiveGas('listFeriaPdfs', { feria: feria, limit: limit }); },
       apiToggleFeriaCloseTrigger: function(enable) { return callLiveGas('toggleFeriaCloseTrigger', { enable: enable }); },
-      apiEnsureFeriantesQr: function() { return callLiveGas('ensureFeriantesQr'); }
+      apiEnsureFeriantesQr: function() { return callLiveGas('ensureFeriantesQr'); },
+      apiGetAnnualBalanceStats: function(year) { return callLiveGas('annualStats', { year: year }); },
+      apiGenerateAnnualBalancePdf: function(year) { return callLiveGas('generateAnnualPdf', { year: year }); },
+      apiExecuteYearClose: function(year, confirmCode) { return callLiveGas('executeYearClose', { year: year, confirmCode: confirmCode }); },
+      apiListAnnualClosures: function() { return callLiveGas('listAnnualClosures'); }
     };
 
     function makeRunner(okCb, errCb) {
