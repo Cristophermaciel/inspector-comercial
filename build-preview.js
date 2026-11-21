@@ -116,6 +116,9 @@ if (typeof google === 'undefined' || !google.script) {
       if (action === 'toggleFeriaCloseTrigger') {
         keysToClear.push('bootstrap');
       }
+      if (action === 'ensureFeriantesQr') {
+        keysToClear.push('rows:ASISTENCIA');
+      }
       if (action === 'runExcelBackup' || action === 'toggleDailyBackup') {
         keysToClear.push('listExcelBackups');
         keysToClear.push('bootstrap');
@@ -554,6 +557,12 @@ if (typeof google === 'undefined' || !google.script) {
       apiListFeriaPdfs: function() { return Promise.resolve([]); },
       apiToggleFeriaCloseTrigger: function(enable) {
         return Promise.resolve({ ok: true, enabled: Boolean(enable), message: enable ? 'Cierre automático 17:00 hrs activado.' : 'Cierre automático desactivado.' });
+      },
+      apiEnsureFeriantesQr: function() {
+        return getDbAsync().then(function(db) {
+          var rows = getMergedRows(db, 'ASISTENCIA');
+          return { ok: true, totalRows: rows.length, updatedCount: rows.length };
+        });
       }
     };
 
@@ -572,7 +581,8 @@ if (typeof google === 'undefined' || !google.script) {
       apiSaveFeriaAttendance: function(payload) { return callLiveGas('saveFeriaAttendance', { payload: payload }); },
       apiCloseFeriaAttendance: function(feria, fecha, tipoCierre) { return callLiveGas('closeFeriaAttendance', { feria: feria, fecha: fecha, tipoCierre: tipoCierre }); },
       apiListFeriaPdfs: function(feria, limit) { return callLiveGas('listFeriaPdfs', { feria: feria, limit: limit }); },
-      apiToggleFeriaCloseTrigger: function(enable) { return callLiveGas('toggleFeriaCloseTrigger', { enable: enable }); }
+      apiToggleFeriaCloseTrigger: function(enable) { return callLiveGas('toggleFeriaCloseTrigger', { enable: enable }); },
+      apiEnsureFeriantesQr: function() { return callLiveGas('ensureFeriantesQr'); }
     };
 
     function makeRunner(okCb, errCb) {

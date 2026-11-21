@@ -1246,9 +1246,10 @@ var TABLE_SCHEMAS = {
       'FOTO CARNET AYUDANTE', 'FOTO CARNET AYUDANTE_15', 'FOTO CARNET AYUDANTE_16',
       'UBICACION', 'OBSERVACIONES'
     ],
-    tableColumns: ['N° Puesto', 'NOMBRE DUEÑO', 'DIA', 'FERIA', 'INSPECTOR', 'INSPECTOR ACOMPAÑANTE', 'RUT DUEÑO', 'PATENTE', 'GIRO'],
+    tableColumns: ['N° Puesto', 'CODIGO_QR', 'NOMBRE DUEÑO', 'DIA', 'FERIA', 'INSPECTOR', 'INSPECTOR ACOMPAÑANTE', 'RUT DUEÑO', 'PATENTE', 'GIRO'],
     columns: [
       { name: 'ID', type: 'Text', isKey: true, initial: 'UNIQUEID', hiddenInForm: true },
+      { name: 'CODIGO_QR', displayName: 'CÓDIGO QR ÚNICO', type: 'Text', readOnly: true, hiddenInForm: true },
       { name: 'FECHA', type: 'DateTime', initial: 'NOW' },
       { name: 'DIA', type: 'Enum', values: ['MARTES', 'MIERCOLES', 'JUEVES', 'VIERNES', 'SABADO', 'DOMINGO'] },
       { name: 'NOMBRE DUEÑO', type: 'Text' },
@@ -1524,6 +1525,9 @@ var APPSHEET_VIEW_MAP = {
       }
       if (action === 'toggleFeriaCloseTrigger') {
         keysToClear.push('bootstrap');
+      }
+      if (action === 'ensureFeriantesQr') {
+        keysToClear.push('rows:ASISTENCIA');
       }
       if (action === 'runExcelBackup' || action === 'toggleDailyBackup') {
         keysToClear.push('listExcelBackups');
@@ -1963,6 +1967,12 @@ var APPSHEET_VIEW_MAP = {
       apiListFeriaPdfs: function() { return Promise.resolve([]); },
       apiToggleFeriaCloseTrigger: function(enable) {
         return Promise.resolve({ ok: true, enabled: Boolean(enable), message: enable ? 'Cierre automático 17:00 hrs activado.' : 'Cierre automático desactivado.' });
+      },
+      apiEnsureFeriantesQr: function() {
+        return getDbAsync().then(function(db) {
+          var rows = getMergedRows(db, 'ASISTENCIA');
+          return { ok: true, totalRows: rows.length, updatedCount: rows.length };
+        });
       }
     };
 
@@ -1981,7 +1991,8 @@ var APPSHEET_VIEW_MAP = {
       apiSaveFeriaAttendance: function(payload) { return callLiveGas('saveFeriaAttendance', { payload: payload }); },
       apiCloseFeriaAttendance: function(feria, fecha, tipoCierre) { return callLiveGas('closeFeriaAttendance', { feria: feria, fecha: fecha, tipoCierre: tipoCierre }); },
       apiListFeriaPdfs: function(feria, limit) { return callLiveGas('listFeriaPdfs', { feria: feria, limit: limit }); },
-      apiToggleFeriaCloseTrigger: function(enable) { return callLiveGas('toggleFeriaCloseTrigger', { enable: enable }); }
+      apiToggleFeriaCloseTrigger: function(enable) { return callLiveGas('toggleFeriaCloseTrigger', { enable: enable }); },
+      apiEnsureFeriantesQr: function() { return callLiveGas('ensureFeriantesQr'); }
     };
 
     function makeRunner(okCb, errCb) {
@@ -3712,6 +3723,71 @@ const App = {
     return false;
   },
 
+  _toAsciiSafe(str) {
+    return String(str || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^\x20-\x7E]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  },
+
+  _buildUniqueStallUid(feria, puestoNum, record, usedSet) {
+    const cleanFeria = this._toAsciiSafe(feria).toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '') || 'FERIA';
+    const existingCode = record && record['CODIGO_QR'] ? this._toAsciiSafe(record['CODIGO_QR']).toUpperCase() : '';
+    let base = existingCode;
+    if (!base) {
+      const pPart = puestoNum ? ('P' + String(puestoNum).padStart(3, '0')) : 'SP';
+      if (record) {
+        const idClean = this._toAsciiSafe(record['ID'] || ('R' + (record._RowNumber || '0'))).toUpperCase().replace(/[^A-Z0-9]/g, '').substring(0, 6);
+        base = cleanFeria + '-' + pPart + '-' + (idClean || '0000');
+      } else {
+        base = cleanFeria + '-' + pPart;
+      }
+    }
+    let uid = base;
+    if (usedSet) {
+      let seq = 2;
+      while (usedSet.has(uid)) {
+        uid = base + '-' + seq;
+        seq++;
+      }
+      usedSet.add(uid);
+    }
+    return uid;
+  },
+
+  _findStall(uidOrPuesto) {
+    const stalls = this.feriaState.stalls || [];
+    if (typeof uidOrPuesto === 'string' && isNaN(Number(uidOrPuesto))) {
+      const byUid = stalls.find(s => s.uid === uidOrPuesto);
+      if (byUid) return byUid;
+    }
+    const byExactUid = stalls.find(s => s.uid === String(uidOrPuesto));
+    if (byExactUid) return byExactUid;
+    return stalls.find(s => s.puesto === Number(uidOrPuesto)) || null;
+  },
+
+  ensureAllFeriantesQrCodes() {
+    this.showLoader('Verificando y asignando códigos QR únicos a todos los feriantes...');
+    google.script.run
+      .withSuccessHandler(res => {
+        this.hideLoader();
+        if (!res || res.ok === false) {
+          this.toast('Error generando QRs: ' + ((res && res.error) || 'Error desconocido'));
+          return;
+        }
+        this.feriaState.allAsistenciaRows = [];
+        this.toast('✅ Códigos QR únicos verificados: ' + (res.totalRows || 0) + ' registros (' + (res.updatedCount || 0) + ' actualizados).');
+        this.renderFeriasHub();
+      })
+      .withFailureHandler(err => {
+        this.hideLoader();
+        this.toast('Error asignando códigos QR: ' + ((err && err.message) || err));
+      })
+      .apiEnsureFeriantesQr();
+  },
+
   _extractPuestoNumber(raw) {
     if (raw === undefined || raw === null) return null;
     const m = String(raw).match(/\d+/);
@@ -3740,15 +3816,17 @@ const App = {
 
         let html = '<div class="section-header">' +
           '<h2>Fichas de Asistencia por Feria (Puestos 1 al 100)</h2>' +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+          '<button class="btn btn-outline btn-sm" onclick="App.ensureAllFeriantesQrCodes()"><span class="material-icons" style="font-size:16px;">qr_code_2</span> Verificar / Generar QRs Únicos (Todos)</button>' +
           '<button class="btn btn-primary btn-sm" onclick="App.navigate({kind:\'form\',table:\'ASISTENCIA\',title:\'Nuevo Registro Feriante\'})"><span class="material-icons" style="font-size:16px;">person_add</span> Registrar Feriante</button>' +
-          '</div>' +
+          '</div></div>' +
           '<div class="card" style="padding:14px 16px;margin-bottom:16px;border-left:4px solid var(--primary);">' +
-          '<strong>Cada feria es 100% independiente</strong> (puestos del 1 al 100 alimentados desde el registro de ferias). Aunque un feriante trabaje en varias ferias, su puesto, su <strong>código QR individual</strong> y su asistencia diaria se controlan por separado.' +
+          '<strong>Cada feria es 100% independiente</strong> (puestos del 1 al 100 alimentados desde el registro de ferias). Cada feriante posee un <strong>código QR único</strong> por feria para su credencial y control diario de asistencia.' +
           '</div>' +
           '<div class="gallery-grid">';
 
         ferias.forEach(feria => {
-          const rowsFeria = this.feriaState.allAsistenciaRows.filter(r => String(r['FERIA'] || '').trim().toUpperCase() === feria);
+          const rowsFeria = this.feriaState.allAsistenciaRows.filter(r => this._normalizeFeriaName(r['FERIA']) === feria);
           const puestosSet = new Set();
           rowsFeria.forEach(r => {
             const p = this._extractPuestoNumber(r['N° Puesto']);
@@ -3759,7 +3837,7 @@ const App = {
             '<div class="card-icon"><span class="material-icons">storefront</span></div>' +
             '<div class="card-title">FERIA ' + this.esc(feria) + '</div>' +
             '<span class="badge badge-blue">' + puestosSet.size + ' / 100 puestos ocupados</span>' +
-            '<small style="color:var(--muted);font-size:11px;">' + rowsFeria.length + ' registro(s) en padrón</small>' +
+            '<small style="color:var(--muted);font-size:11px;">' + rowsFeria.length + ' registro(s) con QR único</small>' +
             '</div>';
         });
 
@@ -3781,25 +3859,41 @@ const App = {
     this.showLoader('Cargando ficha independiente de Feria ' + feria + '...');
 
     const loadAttendance = () => {
-      // Construir puestos 1 al 100 estrictamente para ESTA feria
+      // Construir puestos 1 al 100 + registros adicionales (sin puesto o puesto duplicado) estrictamente para ESTA feria
       const rowsFeria = (this.feriaState.allAsistenciaRows || []).filter(
         r => this._normalizeFeriaName(r['FERIA']) === feria
       );
       const byPuesto = {};
+      const extraRows = [];
       rowsFeria.forEach(r => {
         const p = this._extractPuestoNumber(r['N° Puesto']);
-        if (p && !byPuesto[p]) byPuesto[p] = r;
+        if (p && !byPuesto[p]) {
+          byPuesto[p] = r;
+        } else {
+          extraRows.push({ puesto: p || 0, record: r });
+        }
       });
 
+      const usedUids = new Set();
       const stalls = [];
       for (let num = 1; num <= 100; num++) {
+        const rec = byPuesto[num] || null;
         stalls.push({
           feria,
           puesto: num,
-          uid: feria.replace(/\s+/g, '_') + '-P' + String(num).padStart(3, '0'),
-          record: byPuesto[num] || null
+          uid: this._buildUniqueStallUid(feria, num, rec, usedUids),
+          record: rec
         });
       }
+      extraRows.forEach(item => {
+        stalls.push({
+          feria,
+          puesto: item.puesto,
+          isExtra: true,
+          uid: this._buildUniqueStallUid(feria, item.puesto, item.record, usedUids),
+          record: item.record
+        });
+      });
       this.feriaState.stalls = stalls;
 
       google.script.run
@@ -4005,33 +4099,36 @@ const App = {
 
       if (r) {
         const patCls = String(r['PATENTE'] || '').toUpperCase().indexOf('SI') !== -1 ? 'badge-green' : 'badge-red';
+        const puestoBadgeText = s.puesto ? ('#' + s.puesto) : 'S/P';
+        const uidJs = this.escJs(s.uid);
         html += '<tr>' +
-          '<td><span class="puesto-num-badge">#' + s.puesto + '</span></td>' +
+          '<td><span class="puesto-num-badge">' + puestoBadgeText + '</span><div style="font-size:10px;color:var(--muted);margin-top:2px;">' + this.esc(s.uid) + '</div></td>' +
           '<td><strong>' + this.esc(r['NOMBRE DUEÑO'] || 'Sin nombre') + '</strong>' +
           (r['DIA'] ? '<div style="font-size:11px;color:var(--muted);">Día: ' + this.esc(r['DIA']) + '</div>' : '') + '</td>' +
           '<td>' + this.esc(r['RUT DUEÑO'] || '-') + '<div style="font-size:11px;color:var(--muted);">ROL: ' + this.esc(r['ROL'] || '-') + '</div></td>' +
           '<td><span class="badge ' + patCls + '">' + this.esc(r['PATENTE'] || '-') + '</span><div style="font-size:11px;color:var(--muted);">' + this.esc(r['GIRO'] || '') + '</div></td>' +
           '<td>' + (r['UBICACION'] ? '<a href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(r['UBICACION']) + '" target="_blank" style="color:var(--accent);font-size:12px;">📍 GPS ↗</a>' : '<span style="color:var(--muted);font-size:12px;">Sin GPS</span>') + '</td>' +
           '<td style="white-space:nowrap;">' +
-            '<button class="att-btn asiste' + (isAsiste ? ' active' : '') + '"' + disAttr + ' onclick="App.markFeriaAttendance(' + s.puesto + ',\'ASISTE\',\'MANUAL\')">✓ Asiste</button> ' +
-            '<button class="att-btn no-asiste' + (isNoAsiste ? ' active' : '') + '"' + disAttr + ' onclick="App.markFeriaAttendance(' + s.puesto + ',\'NO ASISTE\',\'MANUAL\')">✕ No Asiste</button>' +
+            '<button class="att-btn asiste' + (isAsiste ? ' active' : '') + '"' + disAttr + ' onclick="App.markFeriaAttendance(' + s.puesto + ',\'ASISTE\',\'MANUAL\',null,\'' + uidJs + '\')">✓ Asiste</button> ' +
+            '<button class="att-btn no-asiste' + (isNoAsiste ? ' active' : '') + '"' + disAttr + ' onclick="App.markFeriaAttendance(' + s.puesto + ',\'NO ASISTE\',\'MANUAL\',null,\'' + uidJs + '\')">✕ No Asiste</button>' +
             statusInfo +
           '</td>' +
           '<td style="white-space:nowrap;">' +
-            '<button class="btn btn-primary btn-sm" onclick="App.openStallQrModal(' + s.puesto + ')" title="Código QR Individual"><span class="material-icons" style="font-size:15px;">qr_code_2</span> QR</button> ' +
-            '<button class="btn btn-outline btn-sm" onclick="App.openStallDetailModal(' + s.puesto + ')">Ficha</button>' +
+            '<button class="btn btn-primary btn-sm" onclick="App.openStallQrModal(\'' + uidJs + '\')" title="Código QR Individual"><span class="material-icons" style="font-size:15px;">qr_code_2</span> QR</button> ' +
+            '<button class="btn btn-outline btn-sm" onclick="App.openStallDetailModal(\'' + uidJs + '\')">Ficha</button>' +
           '</td></tr>';
       } else {
+        const uidJs = this.escJs(s.uid);
         html += '<tr style="background:#fafbfd;">' +
           '<td><span class="puesto-num-badge empty">#' + s.puesto + '</span></td>' +
           '<td colspan="4" style="color:var(--muted);font-style:italic;">Puesto #' + s.puesto + ' disponible / sin feriante asignado en ' + this.esc(st.feria) + '</td>' +
           '<td style="white-space:nowrap;">' +
-            '<button class="att-btn asiste' + (isAsiste ? ' active' : '') + '"' + disAttr + ' onclick="App.markFeriaAttendance(' + s.puesto + ',\'ASISTE\',\'MANUAL\')">✓ Asiste</button> ' +
-            '<button class="att-btn no-asiste' + (isNoAsiste ? ' active' : '') + '"' + disAttr + ' onclick="App.markFeriaAttendance(' + s.puesto + ',\'NO ASISTE\',\'MANUAL\')">✕ No Asiste</button>' +
+            '<button class="att-btn asiste' + (isAsiste ? ' active' : '') + '"' + disAttr + ' onclick="App.markFeriaAttendance(' + s.puesto + ',\'ASISTE\',\'MANUAL\',null,\'' + uidJs + '\')">✓ Asiste</button> ' +
+            '<button class="att-btn no-asiste' + (isNoAsiste ? ' active' : '') + '"' + disAttr + ' onclick="App.markFeriaAttendance(' + s.puesto + ',\'NO ASISTE\',\'MANUAL\',null,\'' + uidJs + '\')">✕ No Asiste</button>' +
             statusInfo +
           '</td>' +
           '<td style="white-space:nowrap;">' +
-            '<button class="btn btn-outline btn-sm" onclick="App.openStallQrModal(' + s.puesto + ')">QR</button> ' +
+            '<button class="btn btn-outline btn-sm" onclick="App.openStallQrModal(\'' + uidJs + '\')">QR</button> ' +
             '<button class="btn btn-outline btn-sm" onclick="App.assignStall(' + s.puesto + ')">+ Asignar</button>' +
           '</td></tr>';
       }
@@ -4056,11 +4153,15 @@ const App = {
     ).map(c => c.value);
   },
 
-  markFeriaAttendance(puestoNum, estado, medio, onDone) {
+  markFeriaAttendance(puestoNum, estado, medio, onDone, stallUid) {
     const st = this.feriaState;
-    const num = this._extractPuestoNumber(puestoNum);
-    if (!num) {
-      const err = new Error('Número de puesto inválido: ' + puestoNum);
+    const stall = stallUid ? this._findStall(stallUid) : this._findStall(puestoNum);
+    const num = this._extractPuestoNumber(puestoNum) || (stall && stall.puesto) || 0;
+    const r = stall && stall.record ? stall.record : {};
+    const idFeriante = r['ID'] || '';
+
+    if (!num && !idFeriante) {
+      const err = new Error('Número de puesto o ID de feriante inválido: ' + puestoNum);
       this.toast(err.message);
       if (typeof onDone === 'function') onDone(err, null);
       return;
@@ -4074,14 +4175,11 @@ const App = {
       return;
     }
 
-    const stall = st.stalls.find(s => s.puesto === num);
-    const r = stall && stall.record ? stall.record : {};
-
     const payload = {
       feria: st.feria,
       fecha: st.fecha || this._getTodayLocalISO(),
       puesto: num,
-      idFeriante: r['ID'] || '',
+      idFeriante: idFeriante,
       nombre: r['NOMBRE DUEÑO'] || ('PUESTO #' + num),
       rut: r['RUT DUEÑO'] || '',
       rol: r['ROL'] || '',
@@ -4104,10 +4202,10 @@ const App = {
           if (typeof onDone === 'function') onDone(err, null);
           return;
         }
-        st.marks[num] = res.mark;
+        if (num > 0) st.marks[num] = res.mark;
         if (res.sheetName) st.sheetName = res.sheetName;
         this._paintFeriaFicha();
-        this.toast('✅ Guardado en Excel (' + (res.sheetName || st.sheetName || st.feria) + ') — Puesto #' + num + ': ' + estado + ' (' + payload.medio + ')');
+        this.toast('✅ Guardado en Excel (' + (res.sheetName || st.sheetName || st.feria) + ') — ' + (num ? ('Puesto #' + num) : payload.nombre) + ': ' + estado + ' (' + payload.medio + ')');
         if (typeof onDone === 'function') onDone(null, res);
       })
       .withFailureHandler(err => {
@@ -4118,24 +4216,82 @@ const App = {
       .apiSaveFeriaAttendance(payload);
   },
 
+  /**
+   * Payload QR compacto (< 150 bytes, 100% ASCII) para evitar desbordamiento
+   * en qrcodejs y garantizar lectura ultra-rápida en credenciales impresas.
+   */
   _buildStallQrPayload(stall) {
     const r = stall.record || {};
-    const ubi = String(r['UBICACION'] || '').trim();
     return {
-      app: 'INSPECTOR_COMERCIAL_PENAFLOR',
-      uid: stall.uid,
-      feria: stall.feria,
-      puesto: stall.puesto,
-      id: r['ID'] || '',
+      app: 'ICP',
+      uid: this._toAsciiSafe(stall.uid),
+      feria: this._toAsciiSafe(stall.feria).toUpperCase(),
+      puesto: stall.puesto || 0,
+      id: this._toAsciiSafe(r['ID'] || ''),
+      rut: this._toAsciiSafe(r['RUT DUEÑO'] || ''),
+      nom: this._toAsciiSafe(r['NOMBRE DUEÑO'] || (stall.puesto ? ('PUESTO ' + stall.puesto) : 'FERIANTE')).substring(0, 32)
+    };
+  },
+
+  _getStallDisplayMeta(stall) {
+    const r = stall.record || {};
+    return {
       nombre: r['NOMBRE DUEÑO'] || 'PUESTO DISPONIBLE',
       rut: r['RUT DUEÑO'] || '',
       rol: r['ROL'] || '',
       patente: r['PATENTE'] || '',
       giro: r['GIRO'] || '',
       dia: r['DIA'] || '',
-      ubicacion: ubi,
-      maps: ubi ? ('https://maps.google.com/?q=' + ubi.replace(/\s+/g, '')) : ''
+      ubicacion: String(r['UBICACION'] || '').trim()
     };
+  },
+
+  _renderQrSafe(targetEl, payloadObj, size) {
+    if (!targetEl) return;
+    targetEl.innerHTML = '';
+    const fullText = JSON.stringify(payloadObj);
+    const minimalText = JSON.stringify({
+      app: 'ICP',
+      uid: payloadObj.uid,
+      feria: payloadObj.feria,
+      puesto: payloadObj.puesto,
+      id: payloadObj.id || ''
+    });
+
+    if (typeof QRCode !== 'undefined') {
+      try {
+        new QRCode(targetEl, {
+          text: fullText,
+          width: size || 150,
+          height: size || 150,
+          colorDark: '#0c347d',
+          colorLight: '#ffffff',
+          correctLevel: QRCode.CorrectLevel.L
+        });
+        return;
+      } catch (e1) {
+        targetEl.innerHTML = '';
+        try {
+          new QRCode(targetEl, {
+            text: minimalText,
+            width: size || 150,
+            height: size || 150,
+            colorDark: '#0c347d',
+            colorLight: '#ffffff',
+            correctLevel: QRCode.CorrectLevel.L
+          });
+          return;
+        } catch (e2) {
+          targetEl.innerHTML = '';
+        }
+      }
+    }
+    const img = document.createElement('img');
+    img.width = size || 150;
+    img.height = size || 150;
+    img.alt = 'QR ' + (payloadObj.uid || '');
+    img.src = 'https://api.qrserver.com/v1/create-qr-code/?size=' + (size || 150) + 'x' + (size || 150) + '&data=' + encodeURIComponent(minimalText);
+    targetEl.appendChild(img);
   },
 
   _resolvePhotoSrc(val) {
@@ -4152,10 +4308,10 @@ const App = {
     return '';
   },
 
-  uploadStallPhotoFromCredential(input, puestoNum) {
+  uploadStallPhotoFromCredential(input, uidOrPuesto) {
     const file = input.files && input.files[0];
     if (!file) return;
-    const stall = this.feriaState.stalls.find(s => s.puesto === Number(puestoNum));
+    const stall = this._findStall(uidOrPuesto);
     if (!stall) return;
 
     const reader = new FileReader();
@@ -4191,7 +4347,7 @@ const App = {
               else this.feriaState.allAsistenciaRows.unshift(res.record);
             }
             this.toast('Foto del titular actualizada en la credencial.');
-            this.openStallQrModal(puestoNum);
+            this.openStallQrModal(stall.uid);
           })
           .withFailureHandler(err => {
             this.hideLoader();
@@ -4204,17 +4360,19 @@ const App = {
     reader.readAsDataURL(file);
   },
 
-  openStallQrModal(puestoNum) {
-    const stall = this.feriaState.stalls.find(s => s.puesto === Number(puestoNum));
+  openStallQrModal(uidOrPuesto) {
+    const stall = this._findStall(uidOrPuesto);
     if (!stall) return;
     const payload = this._buildStallQrPayload(stall);
-    const qrText = JSON.stringify(payload);
+    const meta = this._getStallDisplayMeta(stall);
     const photoSrc = stall.record ? this._resolvePhotoSrc(stall.record['FOTO DUEÑO']) : '';
     const photoHtml = photoSrc
       ? '<img src="' + this.esc(photoSrc) + '" alt="Foto Titular">'
       : '<span class="material-icons" style="font-size:48px;opacity:0.45;">person</span><span style="font-size:10px;opacity:0.75;padding:0 6px;">Sin foto cargada</span>';
+    const puestoTitle = stall.puesto ? ('PUESTO N° ' + stall.puesto) : 'SIN PUESTO ASIGNADO';
+    const uidJs = this.escJs(stall.uid);
 
-    document.getElementById('modalTitle').textContent = 'Credencial QR — Feria ' + stall.feria + ' Puesto #' + stall.puesto;
+    document.getElementById('modalTitle').textContent = 'Credencial QR — Feria ' + stall.feria + ' ' + (stall.puesto ? ('Puesto #' + stall.puesto) : '(Sin Puesto)');
     document.getElementById('modalBody').innerHTML =
       '<div class="qr-card-print" id="qrPrintArea">' +
       '<div class="qr-card-header">' +
@@ -4222,23 +4380,23 @@ const App = {
       '<div style="text-align:left;"><div style="font-size:13px;font-weight:700;color:#0c347d;">DEPTO. INSPECTORES COMERCIALES</div><div style="font-size:11px;color:#667085;">Seguridad Pública Peñaflor</div></div>' +
       '</div>' +
       '<div style="font-size:14px;font-weight:700;color:#0c347d;">FERIA ' + this.esc(stall.feria) + '</div>' +
-      '<div class="qr-puesto-big">PUESTO N° ' + stall.puesto + '</div>' +
+      '<div class="qr-puesto-big">' + this.esc(puestoTitle) + '</div>' +
       '<div class="qr-profile-row">' +
       '<div class="qr-person-photo-wrap">' + photoHtml + '</div>' +
       '<div id="qrCanvasTarget"></div>' +
       '</div>' +
       '<div style="font-size:11px;color:#667085;font-weight:600;">CÓDIGO ÚNICO: ' + this.esc(stall.uid) + '</div>' +
       '<div class="qr-meta-list">' +
-      '<div><strong>Titular:</strong> ' + this.esc(payload.nombre) + '</div>' +
-      '<div><strong>RUT:</strong> ' + this.esc(payload.rut || '-') + ' &nbsp;|&nbsp; <strong>ROL:</strong> ' + this.esc(payload.rol || '-') + '</div>' +
-      '<div><strong>Patente:</strong> ' + this.esc(payload.patente || '-') + ' &nbsp;|&nbsp; <strong>Día:</strong> ' + this.esc(payload.dia || '-') + '</div>' +
-      '<div><strong>Giro:</strong> ' + this.esc(payload.giro || '-') + '</div>' +
-      '<div><strong>Ubicación GPS:</strong> ' + this.esc(payload.ubicacion || 'Sin coordenadas registradas') + '</div>' +
+      '<div><strong>Titular:</strong> ' + this.esc(meta.nombre) + '</div>' +
+      '<div><strong>RUT:</strong> ' + this.esc(meta.rut || '-') + ' &nbsp;|&nbsp; <strong>ROL:</strong> ' + this.esc(meta.rol || '-') + '</div>' +
+      '<div><strong>Patente:</strong> ' + this.esc(meta.patente || '-') + ' &nbsp;|&nbsp; <strong>Día:</strong> ' + this.esc(meta.dia || '-') + '</div>' +
+      '<div><strong>Giro:</strong> ' + this.esc(meta.giro || '-') + '</div>' +
+      '<div><strong>Ubicación GPS:</strong> ' + this.esc(meta.ubicacion || 'Sin coordenadas registradas') + '</div>' +
       '</div></div>' +
       '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:14px;">' +
       '<label class="btn btn-success btn-sm" style="margin:0;cursor:pointer;"><span class="material-icons" style="font-size:16px;">add_a_photo</span> ' + (photoSrc ? 'Cambiar Foto Titular' : 'Cargar Foto Titular') +
-      '<input type="file" accept="image/*" capture="user" style="display:none;" onchange="App.uploadStallPhotoFromCredential(this,' + stall.puesto + ')"></label>' +
-      '<button class="btn btn-primary btn-sm" onclick="App.downloadQrPng(\'' + this.escJs(stall.uid) + '\')"><span class="material-icons" style="font-size:16px;">download</span> Descargar QR (PNG)</button>' +
+      '<input type="file" accept="image/*" capture="user" style="display:none;" onchange="App.uploadStallPhotoFromCredential(this,\'' + uidJs + '\')"></label>' +
+      '<button class="btn btn-primary btn-sm" onclick="App.downloadQrPng(\'' + uidJs + '\')"><span class="material-icons" style="font-size:16px;">download</span> Descargar QR (PNG)</button>' +
       '<button class="btn btn-outline btn-sm" onclick="App.printSingleQr()"><span class="material-icons" style="font-size:16px;">print</span> Imprimir Credencial</button>' +
       '</div>';
 
@@ -4246,17 +4404,7 @@ const App = {
 
     setTimeout(() => {
       const target = document.getElementById('qrCanvasTarget');
-      if (target && typeof QRCode !== 'undefined') {
-        target.innerHTML = '';
-        new QRCode(target, {
-          text: qrText,
-          width: 150,
-          height: 150,
-          colorDark: '#0c347d',
-          colorLight: '#ffffff',
-          correctLevel: QRCode.CorrectLevel.M
-        });
-      }
+      this._renderQrSafe(target, payload, 150);
     }, 50);
   },
 
@@ -4293,42 +4441,47 @@ const App = {
     }
     const w = window.open('', '_blank');
     let cardsHtml = '';
-    occupied.forEach(s => {
+    occupied.forEach((s, idx) => {
       const p = this._buildStallQrPayload(s);
+      const minP = { app: 'ICP', uid: p.uid, feria: p.feria, puesto: p.puesto, id: p.id || '' };
+      const meta = this._getStallDisplayMeta(s);
       const photoSrc = this._resolvePhotoSrc(s.record['FOTO DUEÑO']);
       const photoBox = photoSrc
         ? '<img src="' + this.esc(photoSrc) + '" style="width:76px;height:92px;object-fit:cover;border-radius:8px;border:1.5px solid #0c347d;">'
         : '<div style="width:76px;height:92px;border-radius:8px;border:1.5px solid #0c347d;background:#eef4fc;display:flex;align-items:center;justify-content:center;font-size:10px;color:#0c347d;">FOTO</div>';
+      const puestoLbl = s.puesto ? ('PUESTO #' + s.puesto) : 'SIN PUESTO';
       cardsHtml += '<div class="qr-tile">' +
         '<div style="font-size:10.5px;font-weight:700;color:#0c347d;">DEPTO. INSPECTORES COMERCIALES — PEÑAFLOR</div>' +
-        '<div style="font-size:12.5px;font-weight:700;margin:3px 0;">FERIA ' + this.esc(s.feria) + ' — PUESTO #' + s.puesto + '</div>' +
+        '<div style="font-size:12.5px;font-weight:700;margin:3px 0;">FERIA ' + this.esc(s.feria) + ' — ' + this.esc(puestoLbl) + '</div>' +
         '<div style="display:flex;align-items:center;justify-content:center;gap:8px;margin:6px 0;">' +
         photoBox +
-        '<div id="qrb_' + s.puesto + '" class="qrb" data-qr="' + this.esc(JSON.stringify(p)) + '"></div>' +
+        '<div id="qrb_' + idx + '" class="qrb" data-qr="' + this.esc(JSON.stringify(p)) + '" data-qr-min="' + this.esc(JSON.stringify(minP)) + '"></div>' +
         '</div>' +
+        '<div style="font-size:9.5px;color:#475467;font-weight:700;margin-bottom:2px;">CÓDIGO: ' + this.esc(s.uid) + '</div>' +
         '<div style="font-size:10.5px;text-align:left;margin-top:4px;">' +
-        '<strong>' + this.esc(p.nombre) + '</strong><br>RUT: ' + this.esc(p.rut || '-') + ' | ROL: ' + this.esc(p.rol || '-') + '<br>GPS: ' + this.esc(p.ubicacion || '-') +
+        '<strong>' + this.esc(meta.nombre) + '</strong><br>RUT: ' + this.esc(meta.rut || '-') + ' | ROL: ' + this.esc(meta.rol || '-') + '<br>GPS: ' + this.esc(meta.ubicacion || '-') +
         '</div></div>';
     });
     w.document.write('<!DOCTYPE html><html><head><title>Credenciales QR Feria ' + this.esc(this.feriaState.feria) + '</title>' +
       '<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"><\/script>' +
-      '<style>body{font-family:Arial,sans-serif;padding:12px;}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}.qr-tile{border:2px solid #0c347d;border-radius:10px;padding:10px;text-align:center;page-break-inside:avoid;}.qrb{display:flex;justify-content:center;}@media print{.no-print{display:none;}}</style></head>' +
+      '<style>body{font-family:Arial,sans-serif;padding:12px;}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}.qr-tile{border:2px solid #0c347d;border-radius:10px;padding:10px;text-align:center;page-break-inside:avoid;}.qrb{display:flex;justify-content:center;min-width:96px;min-height:96px;}@media print{.no-print{display:none;}}</style></head>' +
       '<body><div class="no-print" style="margin-bottom:12px;"><button onclick="window.print()" style="padding:10px 18px;background:#0c347d;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;">Imprimir ' + occupied.length + ' Credenciales QR</button></div>' +
       '<div class="grid">' + cardsHtml + '</div>' +
-      '<script>window.onload=function(){document.querySelectorAll(".qrb").forEach(function(el){new QRCode(el,{text:el.getAttribute("data-qr"),width:96,height:96,colorDark:"#0c347d",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.M});});};<\/script></body></html>');
+      '<script>window.onload=function(){document.querySelectorAll(".qrb").forEach(function(el){var t=el.getAttribute("data-qr");var m=el.getAttribute("data-qr-min")||t;try{new QRCode(el,{text:t,width:96,height:96,colorDark:"#0c347d",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.L});}catch(e1){el.innerHTML="";try{new QRCode(el,{text:m,width:96,height:96,colorDark:"#0c347d",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.L});}catch(e2){el.innerHTML="<img width=96 height=96 src=\\"https://api.qrserver.com/v1/create-qr-code/?size=96x96&data="+encodeURIComponent(m)+"\\">";}}});};<\/script></body></html>');
     w.document.close();
   },
 
-  openStallDetailModal(puestoNum) {
-    const stall = this.feriaState.stalls.find(s => s.puesto === Number(puestoNum));
+  openStallDetailModal(uidOrPuesto) {
+    const stall = this._findStall(uidOrPuesto);
     if (!stall || !stall.record) return;
     const r = stall.record;
-    const m = this.feriaState.marks[puestoNum];
-    document.getElementById('modalTitle').textContent = 'Feria ' + stall.feria + ' — Puesto #' + stall.puesto;
+    const m = stall.puesto ? this.feriaState.marks[stall.puesto] : null;
+    const uidJs = this.escJs(stall.uid);
+    document.getElementById('modalTitle').textContent = 'Feria ' + stall.feria + ' — ' + (stall.puesto ? ('Puesto #' + stall.puesto) : 'Sin Puesto');
     let body = '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">' +
-      '<button class="btn btn-primary btn-sm" onclick="App.openStallQrModal(' + puestoNum + ')">📱 Ver Código QR</button>' +
-      '<button class="btn btn-success btn-sm" onclick="App.markFeriaAttendance(' + puestoNum + ',\'ASISTE\',\'MANUAL\');App.closeModal()">✓ Marcar Asiste</button>' +
-      '<button class="btn btn-danger btn-sm" onclick="App.markFeriaAttendance(' + puestoNum + ',\'NO ASISTE\',\'MANUAL\');App.closeModal()">✕ Marcar No Asiste</button>' +
+      '<button class="btn btn-primary btn-sm" onclick="App.openStallQrModal(\'' + uidJs + '\')">📱 Ver Código QR</button>' +
+      '<button class="btn btn-success btn-sm" onclick="App.markFeriaAttendance(' + stall.puesto + ',\'ASISTE\',\'MANUAL\',null,\'' + uidJs + '\');App.closeModal()">✓ Marcar Asiste</button>' +
+      '<button class="btn btn-danger btn-sm" onclick="App.markFeriaAttendance(' + stall.puesto + ',\'NO ASISTE\',\'MANUAL\',null,\'' + uidJs + '\');App.closeModal()">✕ Marcar No Asiste</button>' +
       (r['UBICACION'] ? '<a class="btn btn-outline btn-sm" target="_blank" href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(r['UBICACION']) + '">📍 Ver Ubicación</a>' : '') +
       '</div>';
 
@@ -4424,8 +4577,10 @@ const App = {
     let data = null;
     try { data = JSON.parse(decodedText); } catch (e) {}
 
-    const puestoNum = data ? this._extractPuestoNumber(data.puesto) : null;
-    if (!data || !data.feria || !puestoNum) {
+    const puestoNum = data ? (this._extractPuestoNumber(data.puesto) || 0) : 0;
+    const qrId = data && data.id ? String(data.id).trim() : '';
+    const qrUid = data && data.uid ? String(data.uid).trim() : '';
+    if (!data || !data.feria || (!puestoNum && !qrId && !qrUid)) {
       document.getElementById('qrScanResultBox').innerHTML =
         '<div class="card" style="border-left:4px solid var(--danger);text-align:left;"><strong>QR no reconocido</strong><br><small>' + this.esc(decodedText) + '</small></div>';
       return;
@@ -4435,17 +4590,32 @@ const App = {
     const currentFeria = this._normalizeFeriaName(this.feriaState.feria);
     const isSameFeria = qrFeria === currentFeria;
 
+    // Resolver registro completo del feriante (compatible con QR compacto y QR antiguo)
+    const matchedStall = isSameFeria
+      ? (this._findStall(qrUid) ||
+         (qrId ? this.feriaState.stalls.find(s => s.record && String(s.record['ID'] || '').trim() === qrId) : null) ||
+         (puestoNum ? this._findStall(puestoNum) : null))
+      : null;
+    const rec = matchedStall && matchedStall.record ? matchedStall.record : {};
+    const dispNombre = rec['NOMBRE DUEÑO'] || data.nombre || data.nom || '-';
+    const dispRut = rec['RUT DUEÑO'] || data.rut || '-';
+    const dispRol = rec['ROL'] || data.rol || '-';
+    const dispPat = rec['PATENTE'] || data.patente || '-';
+    const dispGiro = rec['GIRO'] || data.giro || '-';
+    const dispUbi = rec['UBICACION'] || data.ubicacion || '-';
+
     const metaHtml = '<div style="margin-top:8px;font-size:13px;line-height:1.6;">' +
-      '<strong>Feria:</strong> ' + this.esc(qrFeria) + ' &nbsp;|&nbsp; <strong>Puesto:</strong> #' + this.esc(puestoNum) + '<br>' +
-      '<strong>Titular:</strong> ' + this.esc(data.nombre || '-') + '<br>' +
-      '<strong>RUT:</strong> ' + this.esc(data.rut || '-') + ' &nbsp;|&nbsp; <strong>ROL:</strong> ' + this.esc(data.rol || '-') + '<br>' +
-      '<strong>Patente:</strong> ' + this.esc(data.patente || '-') + ' &nbsp;|&nbsp; <strong>Giro:</strong> ' + this.esc(data.giro || '-') + '<br>' +
-      '<strong>Ubicación GPS:</strong> ' + this.esc(data.ubicacion || '-') +
+      '<strong>Feria:</strong> ' + this.esc(qrFeria) + ' &nbsp;|&nbsp; <strong>Puesto:</strong> ' + (puestoNum ? ('#' + this.esc(puestoNum)) : 'Sin puesto') + '<br>' +
+      (qrUid ? ('<strong>Código QR:</strong> ' + this.esc(qrUid) + '<br>') : '') +
+      '<strong>Titular:</strong> ' + this.esc(dispNombre) + '<br>' +
+      '<strong>RUT:</strong> ' + this.esc(dispRut) + ' &nbsp;|&nbsp; <strong>ROL:</strong> ' + this.esc(dispRol) + '<br>' +
+      '<strong>Patente:</strong> ' + this.esc(dispPat) + ' &nbsp;|&nbsp; <strong>Giro:</strong> ' + this.esc(dispGiro) + '<br>' +
+      '<strong>Ubicación GPS:</strong> ' + this.esc(dispUbi) +
       '</div>';
 
     if (!isSameFeria) {
       const warningHtml = '<div style="background:#fffaeb;border:1px solid #fedf89;color:#b54708;padding:10px;border-radius:8px;margin-bottom:10px;font-size:13px;">' +
-        '⚠️ Este código QR corresponde a <strong>FERIA ' + this.esc(qrFeria) + ' (Puesto #' + puestoNum + ')</strong>, no a Feria ' + this.esc(currentFeria) + '. Las ferias son independientes.' +
+        '⚠️ Este código QR corresponde a <strong>FERIA ' + this.esc(qrFeria) + (puestoNum ? (' (Puesto #' + puestoNum + ')') : '') + '</strong>, no a Feria ' + this.esc(currentFeria) + '. Las ferias son independientes.' +
         '<div style="margin-top:8px;"><button class="btn btn-primary btn-sm" onclick="App.closeModal();App.navigate({kind:\'feriaFicha\',feria:\'' + this.escJs(qrFeria) + '\',title:\'Feria ' + this.escJs(qrFeria) + ' (1-100)\'})">Ir a Feria ' + this.esc(qrFeria) + '</button></div></div>';
       document.getElementById('qrScanResultBox').innerHTML =
         warningHtml +
@@ -4492,7 +4662,7 @@ const App = {
         '<button class="btn btn-primary btn-sm" onclick="App.startLiveQrCamera()"><span class="material-icons" style="font-size:15px;">qr_code_scanner</span> Escanear siguiente QR</button>' +
         '<button class="btn btn-outline btn-sm" onclick="App.closeModal()">Cerrar</button>' +
         '</div></div>';
-    });
+    }, matchedStall ? matchedStall.uid : qrUid);
   },
 
   closeFeriaAndGeneratePdf(forceRegenerate) {
